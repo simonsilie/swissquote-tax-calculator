@@ -1,24 +1,11 @@
 #!/usr/bin/env python3
 import argparse
-import json
-import statistics
 import sys
-import urllib.request
-from urllib.error import URLError
 from typing import Optional
 
 import polars as pl
 
-
-# Hardcoded fallback annual average rates (EZB)
-FALLBACK_FX_RATES: dict[int, dict[str, float]] = {
-    2025: {"USD": 1.05, "CHF": 0.93, "EUR": 1.00},
-    2024: {"USD": 1.0825, "CHF": 0.9525, "EUR": 1.00},
-    2023: {"USD": 1.0812, "CHF": 0.9718, "EUR": 1.00},
-    2022: {"USD": 1.0534, "CHF": 1.0048, "EUR": 1.00},
-    2021: {"USD": 1.1829, "CHF": 1.0811, "EUR": 1.00},
-    2020: {"USD": 1.1421, "CHF": 1.0706, "EUR": 1.00},
-}
+from taxes.fx_rates import DailyFXRateFetcher, FALLBACK_FX_RATES
 
 DEFAULT_DIVIDEND_TYPES: list[str] = ["Dividende"]
 DEFAULT_INTEREST_TYPES: list[str] = ["Zinsen auf Einlagen"]
@@ -33,74 +20,6 @@ DEFAULT_COLUMNS: dict[str, str] = {
 }
 
 
-def fetch_annual_fx_rates(year: int) -> Optional[dict[str, float]]:
-    """Fetch annual average EUR/USD and EUR/CHF rates from frankfurter.dev API."""
-    url = f"https://api.frankfurter.dev/v1/{year}-01-01..{year}-12-31?from=EUR&to=USD,CHF"
-    try:
-        req = urllib.request.Request(url)
-        req.add_header("User-Agent", "Mozilla/5.0 (compatible; TaxScript/1.0)")
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.load(response)
-    except URLError, json.JSONDecodeError, KeyError:
-        return None
-
-    rates = data.get("rates", {})
-    usd_rates = [v["USD"] for v in rates.values() if "USD" in v]
-    chf_rates = [v["CHF"] for v in rates.values() if "CHF" in v]
-
-    if not usd_rates or not chf_rates:
-        return None
-
-    return {
-        "USD": round(statistics.mean(usd_rates), 4),
-        "CHF": round(statistics.mean(chf_rates), 4),
-        "EUR": 1.00,
-    }
-
-
-def get_fx_rates_for_year(
-    year: int,
-    cli_usd: Optional[float],
-    cli_chf: Optional[float],
-    cli_eur: Optional[float],
-) -> dict[str, float]:
-    """Get FX rates for a year: CLI args (if provided) > API > fallback table."""
-    if cli_usd is not None or cli_chf is not None or cli_eur is not None:
-        usd_rate = cli_usd if cli_usd is not None else None
-        chf_rate = cli_chf if cli_chf is not None else None
-        eur_rate = cli_eur if cli_eur is not None else None
-
-        if usd_rate is not None and chf_rate is not None and eur_rate is not None:
-            return {"USD": usd_rate, "CHF": chf_rate, "EUR": eur_rate}
-
-        api_rates = fetch_annual_fx_rates(year)
-        if api_rates is None:
-            api_rates = FALLBACK_FX_RATES.get(year, FALLBACK_FX_RATES[2025])
-
-        if usd_rate is not None:
-            api_rates["USD"] = usd_rate
-        if chf_rate is not None:
-            api_rates["CHF"] = chf_rate
-        if eur_rate is not None:
-            api_rates["EUR"] = eur_rate
-
-        return api_rates
-
-    api_rates = fetch_annual_fx_rates(year)
-    if api_rates:
-        print(
-            f"  Wechselkurse (Jahresdurchschnitt {year} via frankfurter.dev): "
-            f"EUR/USD={api_rates['USD']:.4f}, EUR/CHF={api_rates['CHF']:.4f}"
-        )
-        return api_rates
-
-    fallback = FALLBACK_FX_RATES.get(year, FALLBACK_FX_RATES[2025])
-    fallback_rate_usd = fallback["USD"]
-    fallback_rate_chf = fallback["CHF"]
-    print(f"  Wechselkurse (Fallback für {year}): EUR/USD={fallback_rate_usd:.4f}, EUR/CHF={fallback_rate_chf:.4f}")
-    return fallback
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Steuerauswertung für Swissquote-Transaktionen",
@@ -109,14 +28,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("csv_file", help="Pfad zur CSV-Datei (Swissquote Export)")
     parser.add_argument("--encoding", default="latin1", help="CSV-Encoding")
     parser.add_argument("--sep", default=";", help="CSV-Trennzeichen")
-    help_text_usd = "EUR/USD Kurs (Jahresdurchschnitt für erkanntes Jahr, wenn nicht angegeben)"
+    help_text_usd = "EUR/USD Kurs (für annual-Modus: Jahresdurchschnitt, für daily-Modus: Fallback)"
     parser.add_argument(
         "--fx-usd",
         type=float,
         default=None,
         help=help_text_usd,
     )
-    help_text_chf = "EUR/CHF Kurs (Jahresdurchschnitt für erkanntes Jahr, wenn nicht angegeben)"
+    help_text_chf = "EUR/CHF Kurs (für annual-Modus: Jahresdurchschnitt, für daily-Modus: Fallback)"
     parser.add_argument(
         "--fx-chf",
         type=float,
@@ -124,6 +43,12 @@ def parse_args() -> argparse.Namespace:
         help=help_text_chf,
     )
     parser.add_argument("--fx-eur", type=float, default=None, help="EUR/EUR Kurs (standardmäßig 1.0)")
+    parser.add_argument(
+        "--fx-mode",
+        choices=["daily", "annual"],
+        default="daily",
+        help="Wechselkurs-Modus: 'daily' = Tageskurse pro Transaktionsdatum (Standard), 'annual' = Jahresdurchschnitt",
+    )
     parser.add_argument(
         "--dividend-types",
         nargs="+",
@@ -248,6 +173,71 @@ def print_section(title: str, df: pl.DataFrame, columns: list[str], amount_col: 
     print(f"Summe: {format_amount(total, do_round)}")
 
 
+def apply_fx_rates_daily(
+    df: pl.DataFrame,
+    fetcher: DailyFXRateFetcher,
+    date_col: str,
+    currency_col: str,
+    amount_col: str,
+    eur_col: str,
+) -> pl.DataFrame:
+    return df.with_columns(
+        pl.struct([pl.col(date_col), pl.col(currency_col), pl.col(amount_col)])
+        .map_elements(
+            lambda row: (
+                row[amount_col] / fetcher.get_rate(row[date_col].date(), row[currency_col])
+                if row[currency_col] != "EUR"
+                else row[amount_col]
+            ),
+            return_dtype=pl.Float64,
+        )
+        .alias(eur_col)
+    )
+
+
+def apply_fx_rates_annual(
+    df: pl.DataFrame,
+    fetcher: DailyFXRateFetcher,
+    tax_year: int,
+    currency_col: str,
+    amount_col: str,
+    eur_col: str,
+    cli_usd: Optional[float],
+    cli_chf: Optional[float],
+    cli_eur: Optional[float],
+) -> pl.DataFrame:
+    # If all three CLI rates are provided, use them directly without API calls
+    if cli_usd is not None and cli_chf is not None and cli_eur is not None:
+        annual_rates = {"USD": cli_usd, "CHF": cli_chf, "EUR": cli_eur}
+    else:
+        annual_rates = fetcher._fetch_annual_from_api(tax_year)
+        if annual_rates is None:
+            annual_rates = fetcher._get_fallback_rates(tax_year)
+
+        if cli_usd is not None:
+            annual_rates["USD"] = cli_usd
+        if cli_chf is not None:
+            annual_rates["CHF"] = cli_chf
+        if cli_eur is not None:
+            annual_rates["EUR"] = cli_eur
+
+    print(
+        f"  Wechselkurse (Jahresdurchschnitt {tax_year}): "
+        f"EUR/USD={annual_rates['USD']:.4f}, EUR/CHF={annual_rates['CHF']:.4f}"
+    )
+
+    return df.with_columns(
+        pl.when(pl.col(currency_col) == "USD")
+        .then(pl.col(amount_col) / annual_rates["USD"])
+        .when(pl.col(currency_col) == "CHF")
+        .then(pl.col(amount_col) / annual_rates["CHF"])
+        .when(pl.col(currency_col) == "EUR")
+        .then(pl.col(amount_col) / annual_rates["EUR"])
+        .otherwise(pl.col(amount_col))
+        .alias(eur_col)
+    )
+
+
 def main() -> None:
     args = parse_args()
 
@@ -261,18 +251,24 @@ def main() -> None:
     tax_year: int = detect_tax_year(df, args.col_date)
     validate_data(df, args.col_amount, args.col_currency, args.col_type, args.col_date)
 
-    fx_rates: dict[str, float] = get_fx_rates_for_year(tax_year, args.fx_usd, args.fx_chf, args.fx_eur)
+    fetcher = DailyFXRateFetcher()
 
-    df = df.with_columns(
-        pl.when(pl.col(args.col_currency) == "USD")
-        .then(pl.col(args.col_amount) / fx_rates["USD"])
-        .when(pl.col(args.col_currency) == "CHF")
-        .then(pl.col(args.col_amount) / fx_rates["CHF"])
-        .when(pl.col(args.col_currency) == "EUR")
-        .then(pl.col(args.col_amount) / fx_rates["EUR"])
-        .otherwise(pl.col(args.col_amount))
-        .alias(args.col_eur)
-    )
+    if args.fx_mode == "daily":
+        print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} (Tageskurse) ===")
+        df = apply_fx_rates_daily(df, fetcher, args.col_date, args.col_currency, args.col_amount, args.col_eur)
+    else:
+        print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} (Jahresdurchschnitt) ===")
+        df = apply_fx_rates_annual(
+            df,
+            fetcher,
+            tax_year,
+            args.col_currency,
+            args.col_amount,
+            args.col_eur,
+            args.fx_usd,
+            args.fx_chf,
+            args.fx_eur,
+        )
 
     dividends: pl.DataFrame = df.filter(pl.col(args.col_type).is_in(args.dividend_types))
     interest: pl.DataFrame = df.filter(pl.col(args.col_type).is_in(args.interest_types))
@@ -280,7 +276,6 @@ def main() -> None:
     total_dividends: float = dividends[args.col_eur].sum()
     total_interest: float = interest[args.col_eur].sum()
 
-    print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} ===")
     dividend_text = f"1. Anlage KAP-INV (Zeile 4 - ETF-Ausschüttungen): {format_amount(total_dividends, args.round)}"
     print(dividend_text)
     zinsen_text = f"2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   {format_amount(total_interest, args.round)}"
