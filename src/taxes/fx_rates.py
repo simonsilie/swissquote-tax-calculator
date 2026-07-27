@@ -29,6 +29,7 @@ class DailyFXRateFetcher:
     → hardcoded EZB approximate rates. Supports user-provided rate overrides that
     skip the API chain entirely.
     """
+
     def __init__(self, cache_file: Optional[Path] = None, rate_overrides: Optional[dict[str, float]] = None) -> None:
         self.cache_file = cache_file or CACHE_FILE
         self._rate_overrides: dict[str, float] = rate_overrides or {}
@@ -40,7 +41,7 @@ class DailyFXRateFetcher:
             try:
                 with open(self.cache_file, "r", encoding="utf-8") as f:
                     self._cache = json.load(f)
-            except (json.JSONDecodeError, OSError):
+            except json.JSONDecodeError, OSError:
                 self._cache = {}
 
     def _save_cache(self) -> None:
@@ -62,7 +63,7 @@ class DailyFXRateFetcher:
             req.add_header("User-Agent", "Mozilla/5.0 (compatible; TaxScript/1.0)")
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.load(response)
-        except (URLError, json.JSONDecodeError, KeyError):
+        except URLError, json.JSONDecodeError, KeyError:
             return None
 
         rates = data.get("rates", {})
@@ -88,7 +89,7 @@ class DailyFXRateFetcher:
             req.add_header("User-Agent", "Mozilla/5.0 (compatible; TaxScript/1.0)")
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.load(response)
-        except (URLError, json.JSONDecodeError, KeyError):
+        except URLError, json.JSONDecodeError, KeyError:
             return None
 
         rates = data.get("rates", {})

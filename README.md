@@ -10,6 +10,7 @@ Python-Skript zur Auswertung von Swissquote-Transaktions-CSVs für die deutsche 
 - **Validierung** der CSV (fehlende Werte, unbekannte Währungen, Mehrjahres-Check)
 - Wechselkurs-Umrechnung (EUR/USD, EUR/CHF, EUR/EUR)
 - Ausgabe für Anlage KAP-INV (Dividenden) und Anlage KAP (Zinsen)
+- **Realisierte Gewinne und Verluste aus Aktienverkäufen** mit FIFO-Anschaffungskosten
 - CSV-Export der Details
 - **Persistenter Cache** für Wechselkurse (`~/.cache/swissquote-tax/fx_rates.json`)
 
@@ -52,6 +53,9 @@ uv run steuer-auswertung transactions.csv [OPTIONEN]
 | `--fx-eur` | 1.0 | EUR/EUR-Kurs (normalerweise 1.0) |
 | `--dividend-types` | `Dividende` | Transaktionstypen für Dividenden |
 | `--interest-types` | `Zinsen auf Einlagen` | Transaktionstypen für Zinsen |
+| `--purchase-types` | `Kauf` | Transaktionstypen für Wertpapierkäufe |
+| `--sale-types` | `Verkauf` | Transaktionstypen für Wertpapierverkäufe |
+| `--tax-year` | Auto | Steuerjahr bei einer CSV mit Käufen aus Vorjahren |
 | `--round` | nein | Auf ganze Euro runden |
 | `--no-details` | nein | Details nicht ausgeben |
 | `--output file.csv` | nein | Ergebnisse als CSV exportieren |
@@ -82,7 +86,20 @@ uv run steuer-auswertung transactions-from-01012025-to-31122025.csv --no-details
 # Jahresdurchschnitt mit manuellen Kursen
 uv run steuer-auswertung transactions-from-01012025-to-31122025.csv \
   --fx-mode annual --fx-usd 1.08 --fx-chf 0.95 --round --output steuer_2025.csv
+
+# Verkauf 2025 mit Anschaffungskosten aus Vorjahren (Tageskursmodus)
+uv run steuer-auswertung transaktionshistorie.csv --tax-year 2025
 ```
+
+### Aktienverkäufe
+
+Für `Verkauf`-Transaktionen berechnet das Skript den realisierten Betrag mit dem FIFO-Verfahren:
+
+$$\text{Gewinn/Verlust} = \text{Nettoverkaufserlös in EUR} - \text{anteilige Anschaffungskosten in EUR}$$
+
+`Nettobetrag` berücksichtigt damit auch die im Swissquote-Export ausgewiesenen Kauf- und Verkaufskosten. Kauf- und Verkaufstransaktionen werden über die ISIN zugeordnet. Für einen Verkauf müssen alle zugehörigen Kauftranchen, auch aus Vorjahren, in der Eingabedatei enthalten sein. Bei einer mehrjährigen Historie ist `--tax-year` erforderlich; die Auswertung gibt dann nur Verkäufe, Dividenden und Zinsen des gewählten Jahres aus. Der mehrjährige Import wird nur im Tageskursmodus unterstützt.
+
+Aktienverluste werden separat ausgewiesen, damit sie nicht versehentlich mit anderen Kapitalerträgen verrechnet werden. Die endgültige Zuordnung zu den Zeilen der jeweils aktuellen Anlage KAP sollte gegen das Formular des Steuerjahres geprüft werden.
 
 ## Ausgabe
 
@@ -92,6 +109,7 @@ uv run steuer-auswertung transactions-from-01012025-to-31122025.csv \
   Wechselkurse (Tageskurs 2025-06-15): EUR/USD=1.0751, EUR/CHF=0.9498
 1. Anlage KAP-INV (Zeile 4 - ETF-Ausschüttungen): 175 EUR
 2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   2 EUR
+3. Realisierte Gewinne/Verluste aus Aktienverkäufen: 250 EUR
 
 --- Details Dividenden ---
 Datum       Name          Nettobetrag  Währung  Nettobetrag_EUR
@@ -109,7 +127,8 @@ Im `annual`-Modus wird nur ein Kurs pro Währung ausgegeben.
 
 Das Skript prüft automatisch:
 
-- Alle Datumsangaben sind gültig und im gleichen Jahr
+- Ohne `--tax-year` sind alle Datumsangaben im gleichen Jahr
+- Für Verkäufe sind ISIN und Anzahl gesetzt; der FIFO-Bestand enthält ausreichend Stücke
 - Keine fehlenden Werte in Pflichtspalten (Typ, Währung, Betrag)
 - Alle Währungen haben einen konfigurierten FX-Kurs
 - Bei Fehlern bricht das Skript mit eindeutiger Fehlermeldung ab
@@ -130,8 +149,12 @@ Kurse über `--fx-usd`, `--fx-chf`, `--fx-eur` überschreiben die automatischen 
 ## Architektur
 
 ```text
-taxes/
-├── steuer_auswertung.py   # Haupt-Skript, CLI, Datenverarbeitung
+src/taxes/
+├── steuer_auswertung.py   # CLI und Ablaufsteuerung
+├── transactions.py        # CSV-Import, Jahresauswahl und Validierung
+├── currency_conversion.py # Umrechnung mit Tages- oder Jahreskursen
+├── stock_sales.py         # FIFO-Berechnung für Aktienverkäufe
+├── reporting.py           # Konsolenausgabe und CSV-Export
 ├── fx_rates.py            # DailyFXRateFetcher (Tageskurse, Cache, Fallback)
 └── __init__.py
 
@@ -140,4 +163,4 @@ tests/
 └── test_steuer_auswertung.py  # Integrationstests für CLI
 ```
 
-Der neue `fx_rates`-Modul kapselt die gesamte Wechselkurs-Logik (API-Abruf, Caching, Fallback-Kette) und kann unabhängig vom Haupt-Skript getestet werden.
+Die Fachlogik ist nach Verantwortung getrennt: `transactions` verarbeitet Swissquote-Exporte, `currency_conversion` bewertet Beträge in EUR, `stock_sales` ermittelt FIFO-Gewinne und `reporting` erzeugt die Auswertung. `fx_rates` kapselt weiterhin API-Abruf, Caching und Fallback-Kette und kann unabhängig vom Haupt-Skript getestet werden.
