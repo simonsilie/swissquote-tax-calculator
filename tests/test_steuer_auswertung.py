@@ -71,7 +71,7 @@ def test_basic_functionality_daily_mode() -> None:
         csv_file_path = f.name
 
     try:
-        # Use daily mode with fallback rates (no API calls)
+        # Use daily mode with explicit rate overrides (no API calls needed)
         result = subprocess.run(
             [
                 "uv",
@@ -98,7 +98,7 @@ def test_basic_functionality_daily_mode() -> None:
         assert "STEUERJAHR 2024" in output
         assert "Tageskurse" in output
 
-        # 100 USD / 1.0825 = ~92.38 EUR
+        # 100 USD / 1.0825 = 92.38 EUR
         expected_eur = round(100.0 / 1.0825, 2)
         assert f"{expected_eur:.2f} EUR" in output
 

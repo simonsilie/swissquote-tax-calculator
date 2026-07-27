@@ -21,6 +21,7 @@ DEFAULT_COLUMNS: dict[str, str] = {
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the Swissquote tax evaluation tool."""
     parser = argparse.ArgumentParser(
         description="Steuerauswertung für Swissquote-Transaktionen",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -28,14 +29,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("csv_file", help="Pfad zur CSV-Datei (Swissquote Export)")
     parser.add_argument("--encoding", default="latin1", help="CSV-Encoding")
     parser.add_argument("--sep", default=";", help="CSV-Trennzeichen")
-    help_text_usd = "EUR/USD Kurs (für annual-Modus: Jahresdurchschnitt, für daily-Modus: Fallback)"
+    help_text_usd = "EUR/USD Kurs (im annual-Modus: Jahresdurchschnitt, im daily-Modus: Überschreibt automatische Kurse)"
     parser.add_argument(
         "--fx-usd",
         type=float,
         default=None,
         help=help_text_usd,
     )
-    help_text_chf = "EUR/CHF Kurs (für annual-Modus: Jahresdurchschnitt, für daily-Modus: Fallback)"
+    help_text_chf = "EUR/CHF Kurs (im annual-Modus: Jahresdurchschnitt, im daily-Modus: Überschreibt automatische Kurse)"
     parser.add_argument(
         "--fx-chf",
         type=float,
@@ -82,6 +83,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_csv(path: str, encoding: str, sep: str, date_col: str, amount_col: str) -> pl.DataFrame:
+    """Load and preprocess a Swissquote CSV export.
+
+    Handles Latin1 encoding, semicolon separators, date parsing, and
+    amount field normalization (comma-to-period, dash-to-zero).
+    """
     try:
         df = pl.read_csv(
             path,
@@ -115,6 +121,7 @@ def load_csv(path: str, encoding: str, sep: str, date_col: str, amount_col: str)
 
 
 def detect_tax_year(df: pl.DataFrame, date_col: str) -> int:
+    """Detect the tax year from transaction dates and enforce single-year range."""
     years = df[date_col].dt.year().drop_nulls().unique()
     if len(years) == 0:
         sys.exit("Fehler: Keine gültigen Daten in Datumsspalte")
@@ -128,6 +135,7 @@ def detect_tax_year(df: pl.DataFrame, date_col: str) -> int:
 
 
 def validate_data(df: pl.DataFrame, amount_col: str, currency_col: str, type_col: str, date_col: str) -> None:
+    """Validate transaction data for completeness and known currencies."""
     issues: list[str] = []
 
     if df[amount_col].is_null().any():
@@ -149,12 +157,14 @@ def validate_data(df: pl.DataFrame, amount_col: str, currency_col: str, type_col
 
 
 def format_amount(val: float, do_round: bool) -> str:
+    """Format a Euro amount for display, optionally rounding to whole Euros."""
     if do_round:
         return f"{round(val)} EUR"
     return f"{val:.2f} EUR"
 
 
 def print_section(title: str, df: pl.DataFrame, columns: list[str], amount_col: str, do_round: bool) -> None:
+    """Print a titled section of transaction details with a sum total."""
     print(f"\n--- {title} ---")
     if df.is_empty():
         print("Keine Einträge")
@@ -181,6 +191,7 @@ def apply_fx_rates_daily(
     amount_col: str,
     eur_col: str,
 ) -> pl.DataFrame:
+    """Apply per-transaction daily exchange rates to convert amounts to EUR."""
     return df.with_columns(
         pl.struct([pl.col(date_col), pl.col(currency_col), pl.col(amount_col)])
         .map_elements(
@@ -206,13 +217,14 @@ def apply_fx_rates_annual(
     cli_chf: Optional[float],
     cli_eur: Optional[float],
 ) -> pl.DataFrame:
+    """Apply annual-average exchange rates to convert amounts to EUR."""
     # If all three CLI rates are provided, use them directly without API calls
     if cli_usd is not None and cli_chf is not None and cli_eur is not None:
         annual_rates = {"USD": cli_usd, "CHF": cli_chf, "EUR": cli_eur}
     else:
-        annual_rates = fetcher._fetch_annual_from_api(tax_year)
+        annual_rates = fetcher.fetch_annual_rates(tax_year)
         if annual_rates is None:
-            annual_rates = fetcher._get_fallback_rates(tax_year)
+            annual_rates = fetcher.get_fallback_rates(tax_year)
 
         if cli_usd is not None:
             annual_rates["USD"] = cli_usd
@@ -239,6 +251,7 @@ def apply_fx_rates_annual(
 
 
 def main() -> None:
+    """Evaluate Swissquote transaction CSV for German tax declarations (Anlage KAP / KAP-INV)."""
     args = parse_args()
 
     df = load_csv(args.csv_file, args.encoding, args.sep, args.col_date, args.col_amount)
@@ -251,7 +264,15 @@ def main() -> None:
     tax_year: int = detect_tax_year(df, args.col_date)
     validate_data(df, args.col_amount, args.col_currency, args.col_type, args.col_date)
 
-    fetcher = DailyFXRateFetcher()
+    rate_overrides: dict[str, float] = {}
+    if args.fx_usd is not None:
+        rate_overrides["USD"] = args.fx_usd
+    if args.fx_chf is not None:
+        rate_overrides["CHF"] = args.fx_chf
+    if args.fx_eur is not None:
+        rate_overrides["EUR"] = args.fx_eur
+
+    fetcher = DailyFXRateFetcher(rate_overrides=rate_overrides)
 
     if args.fx_mode == "daily":
         print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} (Tageskurse) ===")

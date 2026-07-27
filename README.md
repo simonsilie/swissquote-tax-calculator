@@ -61,6 +61,7 @@ uv run steuer-auswertung transactions.csv [OPTIONEN]
 #### Tageskurse (`--fx-mode daily`, **Standard**)
 
 Das Skript lädt für **jede Transaktion** den Wechselkurs des exakten Transaktionsdatums von der frankfurter.dev API.
+
 - Vorteil: Korrekte steuerliche Bewertung pro Transaktion
 - Caching: Kurse werden lokal in `~/.cache/swissquote-tax/fx_rates.json` gespeichert (keine doppelten API-Aufrufe)
 - Fallback-Kette: Tageskurs API → Jahresdurchschnitt API → Hinterlegte Standardwerte
@@ -68,6 +69,7 @@ Das Skript lädt für **jede Transaktion** den Wechselkurs des exakten Transakti
 #### Jahresdurchschnitt (`--fx-mode annual`, Legacy)
 
 Verhält sich wie die vorherige Version: Ein Kurs pro Währung für das gesamte Steuerjahr.
+
 - Verwendet `--fx-usd`, `--fx-chf`, `--fx-eur` als Überschreibungen
 - Nützlich für Reproduzierbarkeit oder wenn die API nicht verfügbar ist
 
@@ -127,7 +129,7 @@ Kurse über `--fx-usd`, `--fx-chf`, `--fx-eur` überschreiben die automatischen 
 
 ## Architektur
 
-```
+```text
 taxes/
 ├── steuer_auswertung.py   # Haupt-Skript, CLI, Datenverarbeitung
 ├── fx_rates.py            # DailyFXRateFetcher (Tageskurse, Cache, Fallback)
