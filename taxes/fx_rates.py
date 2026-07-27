@@ -149,3 +149,12 @@ class DailyFXRateFetcher:
         for curr in DEFAULT_CURRENCIES:
             result[curr] = self.get_rate(target_date, curr)
         return result
+
+    @staticmethod
+    def clear_cache(cache_file: Optional[Path] = None) -> bool:
+        """Delete the FX rate cache file. Returns True if deleted, False if it did not exist."""
+        path = cache_file or CACHE_FILE
+        if not path.exists():
+            return False
+        path.unlink()
+        return True

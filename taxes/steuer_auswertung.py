@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import sys
+from pathlib import Path
 from typing import Optional
 
 import polars as pl
 
-from taxes.fx_rates import DailyFXRateFetcher, FALLBACK_FX_RATES
+from taxes.fx_rates import CACHE_FILE, DailyFXRateFetcher, FALLBACK_FX_RATES
 
 DEFAULT_DIVIDEND_TYPES: list[str] = ["Dividende"]
 DEFAULT_INTEREST_TYPES: list[str] = ["Zinsen auf Einlagen"]
@@ -26,7 +27,7 @@ def parse_args() -> argparse.Namespace:
         description="Steuerauswertung für Swissquote-Transaktionen",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("csv_file", help="Pfad zur CSV-Datei (Swissquote Export)")
+    parser.add_argument("csv_file", type=Path, nargs="?", help="Pfad zur CSV-Datei (Swissquote Export)")
     parser.add_argument("--encoding", default="latin1", help="CSV-Encoding")
     parser.add_argument("--sep", default=";", help="CSV-Trennzeichen")
     help_text_usd = "EUR/USD Kurs (im annual-Modus: Jahresdurchschnitt, im daily-Modus: Überschreibt automatische Kurse)"
@@ -79,10 +80,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--round", action="store_true", help="Ergebnisse auf ganze Euro runden")
     parser.add_argument("--no-details", action="store_true", help="Details nicht ausgeben")
     parser.add_argument("--output", help="Ergebnisse in CSV-Datei schreiben")
+    parser.add_argument("--clear-cache", action="store_true", help="FX-Rates-Cache löschen und beenden")
     return parser.parse_args()
 
 
-def load_csv(path: str, encoding: str, sep: str, date_col: str, amount_col: str) -> pl.DataFrame:
+def load_csv(path: Path, encoding: str, sep: str, date_col: str, amount_col: str) -> pl.DataFrame:
     """Load and preprocess a Swissquote CSV export.
 
     Handles Latin1 encoding, semicolon separators, date parsing, and
@@ -253,6 +255,16 @@ def apply_fx_rates_annual(
 def main() -> None:
     """Evaluate Swissquote transaction CSV for German tax declarations (Anlage KAP / KAP-INV)."""
     args = parse_args()
+
+    if args.clear_cache:
+        if DailyFXRateFetcher.clear_cache():
+            print(f"FX-Rates-Cache gelöscht ({CACHE_FILE}).")
+        else:
+            print(f"FX-Rates-Cache existiert nicht ({CACHE_FILE}) – nichts zu löschen.")
+        return
+
+    if args.csv_file is None:
+        sys.exit("Fehler: csv_file ist erforderlich (z.B. steuer-auswertung transaktionen.csv)")
 
     df = load_csv(args.csv_file, args.encoding, args.sep, args.col_date, args.col_amount)
 
