@@ -1,0 +1,38 @@
+[project]
+name = "taxes"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.14"
+dependencies = [
+    "polars>=1.16.0",
+    "pyarrow>=25.0.0",
+]
+
+[project.scripts]
+steuer-auswertung = "taxes.steuer_auswertung:main"
+
+[tool.setuptools.packages.find]
+include = ["taxes*"]
+
+[dependency-groups]
+dev = [
+    "pyrefly>=1.1.1",
+    "pytest>=9.1.1",
+    "ruff>=0.1.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_steuer_auswertung.py" = ["E402"]
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
