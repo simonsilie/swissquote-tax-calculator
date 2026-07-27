@@ -101,6 +101,16 @@ $$\text{Gewinn/Verlust} = \text{Nettoverkaufserlös in EUR} - \text{anteilige An
 
 Aktienverluste werden separat ausgewiesen, damit sie nicht versehentlich mit anderen Kapitalerträgen verrechnet werden. Die endgültige Zuordnung zu den Zeilen der jeweils aktuellen Anlage KAP sollte gegen das Formular des Steuerjahres geprüft werden.
 
+### Anlage KAP
+
+Bei einer Swissquote-Transaktion ohne deutschen Kapitalertragsteuerabzug gehören Aktienverkäufe in die **Anlage KAP**, nicht in die Anlage KAP-INV. Das Skript gibt deshalb zusätzlich zum Nettoergebnis getrennte Aktiengewinne und Aktienverluste aus:
+
+- Enthält die CSV keine `Verkauf`-Transaktionen, ist für Aktienverkäufe keine Eintragung erforderlich.
+- Das Nettoergebnis aus den Verkäufen ist bei den Kapitalerträgen ohne inländischen Steuerabzug zu berücksichtigen.
+- Aktiengewinne und Aktienverluste werden separat ausgewiesen, da Aktienverluste nur mit Gewinnen aus Aktienveräußerungen verrechnet werden dürfen.
+
+Für das Steuerjahr 2025 entsprechen die Formularfelder der Anlage KAP üblicherweise: Zeile 7 für Kapitalerträge ohne inländischen Steuerabzug, Zeile 8 für darin enthaltene Aktienveräußerungsgewinne und Zeile 12 für darin enthaltene Aktienveräußerungsverluste. Zeilennummern und Feldbezeichnungen können sich ändern; vor Abgabe ist das Formular des jeweiligen Steuerjahrs in ELSTER zu prüfen.
+
 ## Ausgabe
 
 ```text
@@ -110,6 +120,8 @@ Aktienverluste werden separat ausgewiesen, damit sie nicht versehentlich mit and
 1. Anlage KAP-INV (Zeile 4 - ETF-Ausschüttungen): 175 EUR
 2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   2 EUR
 3. Realisierte Gewinne/Verluste aus Aktienverkäufen: 250 EUR
+  Anlage KAP: In Kapitalerträgen ohne inländischen Steuerabzug berücksichtigen.
+  Davon Aktiengewinne (separates Formularfeld): 250 EUR
 
 --- Details Dividenden ---
 Datum       Name          Nettobetrag  Währung  Nettobetrag_EUR
@@ -150,7 +162,7 @@ Kurse über `--fx-usd`, `--fx-chf`, `--fx-eur` überschreiben die automatischen 
 
 ```text
 src/taxes/
-├── steuer_auswertung.py   # CLI und Ablaufsteuerung
+├── cli.py                 # CLI und Ablaufsteuerung
 ├── transactions.py        # CSV-Import, Jahresauswahl und Validierung
 ├── currency_conversion.py # Umrechnung mit Tages- oder Jahreskursen
 ├── stock_sales.py         # FIFO-Berechnung für Aktienverkäufe
@@ -160,7 +172,8 @@ src/taxes/
 
 tests/
 ├── test_fx_rates.py       # Unit-Tests für fx_rates Modul
-└── test_steuer_auswertung.py  # Integrationstests für CLI
+├── test_cli.py            # Integrationstests für die CLI
+└── test_stock_sales.py    # Integrationstests für Aktienverkäufe
 ```
 
 Die Fachlogik ist nach Verantwortung getrennt: `transactions` verarbeitet Swissquote-Exporte, `currency_conversion` bewertet Beträge in EUR, `stock_sales` ermittelt FIFO-Gewinne und `reporting` erzeugt die Auswertung. `fx_rates` kapselt weiterhin API-Abruf, Caching und Fallback-Kette und kann unabhängig vom Haupt-Skript getestet werden.

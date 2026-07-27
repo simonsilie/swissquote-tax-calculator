@@ -7,7 +7,7 @@ import polars as pl
 
 from taxes.currency_conversion import apply_fx_rates_annual, apply_fx_rates_daily
 from taxes.fx_rates import CACHE_FILE, DailyFXRateFetcher
-from taxes.reporting import export_details, format_amount, print_section
+from taxes.reporting import export_details, format_amount, print_section, print_stock_sale_tax_note
 from taxes.stock_sales import calculate_realized_stock_results
 from taxes.transactions import detect_tax_year, load_csv, validate_data
 
@@ -189,6 +189,7 @@ def main() -> None:
         f"3. Realisierte Gewinne/Verluste aus Aktienverkäufen: {format_amount(total_stock_sales, args.round)}"
     )
     print(stock_sales_text)
+    print_stock_sale_tax_note(stock_sales, "Gewinn_Verlust_EUR", args.round)
 
     if not args.no_details:
         detail_cols: list[str] = [

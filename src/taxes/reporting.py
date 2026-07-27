@@ -28,6 +28,21 @@ def print_section(title: str, dataframe: pl.DataFrame, columns: list[str], amoun
     print(f"Summe: {format_amount(total, round_amount)}")
 
 
+def print_stock_sale_tax_note(stock_sales: pl.DataFrame, result_col: str, round_amount: bool) -> None:
+    """Print Anlage KAP guidance for realized stock sales."""
+    if stock_sales.is_empty():
+        print("   Anlage KAP: Keine Eintragung für Aktienverkäufe (keine Verkaufstransaktionen).")
+        return
+
+    gains = float(stock_sales.filter(pl.col(result_col) > 0)[result_col].sum())
+    losses = float(stock_sales.filter(pl.col(result_col) < 0)[result_col].sum())
+    print("   Anlage KAP: In Kapitalerträgen ohne inländischen Steuerabzug berücksichtigen.")
+    if gains:
+        print(f"   Davon Aktiengewinne (separates Formularfeld): {format_amount(gains, round_amount)}")
+    if losses:
+        print(f"   Davon Aktienverluste (separates Formularfeld): {format_amount(losses, round_amount)}")
+
+
 def export_details(
     dividends: pl.DataFrame,
     interest: pl.DataFrame,

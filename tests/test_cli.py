@@ -38,6 +38,7 @@ def test_basic_functionality_daily_mode() -> None:
     assert "STEUERJAHR 2024" in result.stdout
     assert "Tageskurse" in result.stdout
     assert "92.38 EUR" in result.stdout
+    assert "Keine Eintragung für Aktienverkäufe" in result.stdout
 
 
 def test_multiple_years_require_an_explicit_tax_year() -> None:

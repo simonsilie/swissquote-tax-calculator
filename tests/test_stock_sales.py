@@ -13,6 +13,7 @@ def test_realized_stock_sales_use_fifo_cost_basis() -> None:
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "Realisierte Gewinne/Verluste aus Aktienverkäufen: 250.00 EUR" in result.stdout
+    assert "Aktiengewinne (separates Formularfeld): 250.00 EUR" in result.stdout
 
 
 def test_stock_sales_can_use_historical_purchase_lots() -> None:
