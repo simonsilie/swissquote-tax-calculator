@@ -59,6 +59,7 @@ uv run steuer-auswertung transactions.csv [OPTIONEN]
 | `--tax-year` | Auto | Steuerjahr bei einer CSV mit Käufen aus Vorjahren |
 | `--col-withholding-tax` | `Kosten` | Spalte mit einbehaltener Quellensteuer im Swissquote-Standardexport |
 | `--col-withholding-tax-eur` | `Quellensteuer_EUR` | EUR-Spalte für Quellensteuer (Output) |
+| `--withholding-tax-rules` | `withholding-tax-rules.toml`, falls vorhanden | TOML-Datei mit ISIN-/Präfixregeln für Quellensteuer |
 | `--round` | nein | Auf ganze Euro runden |
 | `--no-details` | nein | Details nicht ausgeben |
 | `--output file.csv` | nein | Ergebnisse als CSV exportieren |
@@ -91,6 +92,48 @@ round = true
 ```bash
 uv run steuer-auswertung transactions.csv --config tax-calculator.conf
 ```
+
+### Quellensteuer-Regeln nach ISIN
+
+Die Spalte `Kosten` im Swissquote-Standardexport kann ausländische Quellensteuer, deutsche
+Kapitalertragsteuer oder andere Kosten enthalten. Damit nur tatsächlich anrechenbare ausländische
+Quellensteuer in Anlage KAP Zeile 41 erscheint, wird sie in einer lokalen TOML-Datei klassifiziert.
+
+```bash
+cp withholding-tax-rules.template.toml withholding-tax-rules.toml
+# withholding-tax-rules.toml für die eigenen ISIN-Präfixe und Ausnahmen ergänzen
+uv run steuer-auswertung transactions.csv
+```
+
+Eine `withholding-tax-rules.toml` im aktuellen Arbeitsverzeichnis wird automatisch geladen. Mit
+`--withholding-tax-rules PFAD` kann eine abweichende Regeldatei verwendet werden.
+
+`[[country]]`-Regeln gelten für die ersten zwei Zeichen der ISIN, beispielsweise `DE`, `CH` oder `FR`.
+Eine `[[security]]`-Regel für eine konkrete ISIN überschreibt immer die Länderregel. Beide Regeltypen
+enthalten den Quellenstaat, die Abzugsart und den maximal anrechenbaren Anteil der Bruttodividende.
+`domestic` setzt den Höchstbetrag immer auf `0.0`; `foreign` begrenzt die Anrechnung auf
+`Bruttodividende × max_creditable_rate`. Übersteigende ausländische Steuer sowie nicht klassifizierte
+Beträge werden separat ausgegeben. Als `domestic` klassifizierte Abzüge werden separat als
+anrechenbare deutsche Kapitalertragsteuer (Anlage KAP 2025, Zeile 43) und anrechenbarer
+Solidaritätszuschlag (Zeile 44) ausgewiesen; sie gehören nicht in Zeile 41. Die Aufteilung erfolgt
+im Verhältnis von Kapitalertragsteuer und Soli und setzt voraus, dass der Abzug keine Kirchensteuer
+enthält. Die Regelwerte müssen gegen Steuerbescheinigung und aktuelles DBA geprüft werden.
+Das ISIN-Präfix ist nur ein sinnvoller Standardwert: Bei ETFs, international vergebenen ISINs wie `XS...`
+und abweichender Besteuerung ist eine konkrete `[[security]]`-Ausnahme erforderlich.
+
+Mit dem optionalen Feld `instrument` wird zwischen Formularen unterschieden: `instrument = "fund"`
+weist die Ausschüttung der **Anlage KAP-INV** zu (Investmentfonds/ETFs), der Standard `"share"`
+ordnet die Dividende der **Anlage KAP** zu (Einzelaktien). Ohne passende Regel gilt `share`; ETFs
+müssen daher per `[[security]]`-Regel mit `instrument = "fund"` markiert werden.
+
+Einzelaktien werden zusätzlich nach Quellenstaat getrennt: deutsche Aktien (`source_country = "DE"`
+bzw. ISIN-Präfix `DE`) erscheinen als inländische Kapitalerträge in **Anlage KAP Zeile 18**, alle
+übrigen Aktien als ausländische Kapitalerträge in **Anlage KAP Zeile 19**. Die Zeilennummern beziehen
+sich auf die Anlage KAP 2025 und sind vor Abgabe am ELSTER-Formular des Steuerjahres zu prüfen.
+
+Ohne Regeldatei oder ohne passende ISIN-Regel wird kein Betrag aus `Kosten` automatisch in Zeile 41
+aufgenommen. Separate Quellensteuer-Buchungen werden ebenfalls nicht angerechnet, weil der zugehörige
+Bruttobetrag für die Höchstgrenze nicht zuverlässig ermittelt werden kann.
 
 ### Wechselkurs-Modi
 
@@ -149,7 +192,10 @@ Für das Steuerjahr 2025 entsprechen die Formularfelder der Anlage KAP üblicher
 === AUSWERTUNG FÜR STEUERJAHR 2025 (Tageskurse) ===
   Wechselkurse (Tageskurs 2025-03-01): EUR/USD=1.0823, EUR/CHF=0.9534
   Wechselkurse (Tageskurs 2025-06-15): EUR/USD=1.0751, EUR/CHF=0.9498
-1. Anlage KAP-INV (Zeile 4 - ETF-Ausschüttungen): 175 EUR
+1. Dividenden (Bruttoerträge vor Quellensteuer):
+   Anlage KAP (Zeile 18 - Inländische Kapitalerträge, deutsche Aktien): 28 EUR
+   Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): 214 EUR
+   Anlage KAP-INV (Zeile 4 - Investmentfonds-/ETF-Ausschüttungen): 175 EUR
 2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   2 EUR
 3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 23 EUR
    Davon Quellensteuer auf Dividenden: 22 EUR
@@ -172,7 +218,9 @@ Im `annual`-Modus wird nur ein Kurs pro Währung ausgegeben.
 
 ### Quellensteuer
 
-Im Swissquote-Standardexport wird die einbehaltene Quellensteuer in der Spalte `Kosten` geführt; diese verwendet das Skript standardmäßig. Abweichende Exportbezeichnungen lassen sich mit `--col-withholding-tax` angeben. Der Betrag wird mit demselben Tages- oder Jahreskurs wie der zugehörige Ertrag in EUR umgerechnet. Negative Abzüge im CSV-Export werden als positiver anrechenbarer Betrag ausgewiesen:
+Im Swissquote-Standardexport wird die einbehaltene Quellensteuer in der Spalte `Kosten` geführt; diese verwendet das Skript standardmäßig. Der Betrag wird mit demselben Tages- oder Jahreskurs wie der zugehörige Ertrag in EUR umgerechnet. Negative Abzüge im CSV-Export werden als positiver Betrag ausgewiesen. Die Anrechnung in Anlage KAP Zeile 41 erfolgt jedoch nur mit einer passenden ISIN-Regel aus `--withholding-tax-rules`.
+
+Die ausgewiesenen Dividenden- und Zinserträge sind **Bruttobeträge** vor Quellensteuerabzug: Das Skript rechnet die einbehaltene Steuer aus `Kosten` wieder auf den Nettobetrag auf (`Bruttobetrag_EUR = Nettobetrag_EUR + Quellensteuer_EUR`), da für die deutsche Steuererklärung der Bruttoertrag anzugeben und die Steuer separat anzurechnen ist.
 
 - Quellensteuer auf Dividenden und Zinsen zusammen für Anlage KAP Zeile 41
 

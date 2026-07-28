@@ -106,35 +106,155 @@ def test_annual_fx_mode_uses_configured_rate() -> None:
 
 
 def test_withholding_tax_is_converted_and_reported() -> None:
-    """The Swissquote Kosten column is converted and reported as withholding tax."""
-    csv_content = """Datum;Transaktionen;Name;Nettobetrag;Kosten;Währung
-31-12-2025 15:57:09;Dividende;US ETF;85.00;-15.00;USD
-01-01-2025 12:15:04;Zinsen auf Einlagen;CHF Konto;6.50;-3.50;CHF
+    """A configured foreign ISIN credits Kosten up to its treaty rate."""
+    csv_content = """Datum;Transaktionen;Name;ISIN;Nettobetrag;Kosten;Währung
+31-12-2025 15:57:09;Dividende;US ETF;US0000000001;85.00;-15.00;USD
 """
 
     result = run_cli(
         csv_content,
         ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
-    )
-
-    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
-    assert "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 18.50 EUR" in result.stdout
-    assert "Davon Quellensteuer auf Dividenden: 15.00 EUR" in result.stdout
-    assert "Davon Quellensteuer auf Zinsen: 3.50 EUR" in result.stdout
-
-
-def test_separate_withholding_tax_transaction_is_reported() -> None:
-    """Separate withholding-tax bookings are converted and included in KAP line 41."""
-    csv_content = """Datum;Transaktionen;Name;Nettobetrag;Währung
-31-12-2025 15:57:09;Dividende;US ETF;85.00;USD
-31-12-2025 15:57:09;Withholding Tax;US ETF;-15.00;USD
-"""
-
-    result = run_cli(
-        csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        withholding_tax_rules="""[[security]]
+isin = "US0000000001"
+source_country = "US"
+tax_treatment = "foreign"
+max_creditable_rate = 0.15
+""",
     )
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 15.00 EUR" in result.stdout
-    assert "Davon separate Quellensteuer-Buchungen: 15.00 EUR" in result.stdout
+    assert "Davon Quellensteuer auf Dividenden: 15.00 EUR" in result.stdout
+
+
+def test_dividend_income_is_reported_gross_of_withholding_tax() -> None:
+    """Declared dividend income adds back withheld tax to report the gross amount."""
+    csv_content = """Datum;Transaktionen;Name;ISIN;Nettobetrag;Kosten;Währung
+31-12-2025 15:57:09;Dividende;US ETF;US0000000001;85.00;-15.00;USD
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        withholding_tax_rules="""[[security]]
+isin = "US0000000001"
+source_country = "US"
+tax_treatment = "foreign"
+max_creditable_rate = 0.15
+""",
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): 100.00 EUR" in result.stdout
+
+
+def test_domestic_dividend_income_is_reported_gross_of_german_tax() -> None:
+    """A German dividend is declared with its gross amount before the 26.375% deduction."""
+    csv_content = """Datum;Transaktionen;Name;ISIN;Nettobetrag;Kosten;Währung
+31-12-2025 15:57:09;Dividende;SAP;DE0007164600;73.625;-26.375;EUR
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        withholding_tax_rules="""[[security]]
+isin = "DE0007164600"
+source_country = "DE"
+tax_treatment = "domestic"
+max_creditable_rate = 0.0
+""",
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "Anlage KAP (Zeile 18 - Inländische Kapitalerträge, deutsche Aktien): 100.00 EUR" in result.stdout
+
+
+def test_fund_distribution_is_reported_in_anlage_kap_inv() -> None:
+    """A security flagged as a fund is reported on the Anlage KAP-INV line."""
+    csv_content = """Datum;Transaktionen;Name;ISIN;Nettobetrag;Kosten;Währung
+31-12-2025 15:57:09;Dividende;World ETF;IE00B3RBWM25;100.00;0.00;EUR
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        withholding_tax_rules="""[[security]]
+isin = "IE00B3RBWM25"
+source_country = "IE"
+tax_treatment = "foreign"
+max_creditable_rate = 0.0
+instrument = "fund"
+""",
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "Anlage KAP-INV (Zeile 4 - Investmentfonds-/ETF-Ausschüttungen): 100.00 EUR" in result.stdout
+    assert "Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): 0.00 EUR" in result.stdout
+
+
+def test_domestic_tax_position_is_reported_even_when_empty() -> None:
+    """The report retains its numbering when no domestic tax was withheld."""
+    csv_content = """Datum;Transaktionen;Name;ISIN;Nettobetrag;Kosten;Währung
+31-12-2025 15:57:09;Dividende;US ETF;US0000000001;85.00;-15.00;USD
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        withholding_tax_rules="""[[security]]
+isin = "US0000000001"
+source_country = "US"
+tax_treatment = "foreign"
+max_creditable_rate = 0.15
+""",
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "Zeile 43 - Anrechenbare Kapitalertragsteuer: 0.00 EUR" in result.stdout
+    assert "Zeile 44 - Anrechenbarer Solidaritätszuschlag: 0.00 EUR" in result.stdout
+
+
+def test_domestic_capital_gains_tax_including_soli_is_reported() -> None:
+    """A domestic SAP rule reports German capital gains tax separately from foreign tax."""
+    csv_content = """Datum;Transaktionen;Name;ISIN;Nettobetrag;Kosten;Währung
+31-12-2025 15:57:09;Dividende;SAP;DE0007164600;73.625;-26.375;EUR
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        withholding_tax_rules="""[[security]]
+isin = "DE0007164600"
+source_country = "DE"
+tax_treatment = "domestic"
+max_creditable_rate = 0.0
+""",
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "Zeile 43 - Anrechenbare Kapitalertragsteuer: 25.00 EUR" in result.stdout
+    assert "Zeile 44 - Anrechenbarer Solidaritätszuschlag: 1.38 EUR" in result.stdout
+    assert "Anrechenbare ausländische Steuern): 0.00 EUR" in result.stdout
+
+
+def test_separate_withholding_tax_transaction_is_reported() -> None:
+    """Separate tax bookings need their associated gross income before crediting."""
+    csv_content = """Datum;Transaktionen;Name;ISIN;Nettobetrag;Währung
+31-12-2025 15:57:09;Dividende;US ETF;US0000000001;85.00;USD
+31-12-2025 15:57:09;Withholding Tax;US ETF;US0000000001;-15.00;USD
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        withholding_tax_rules="""[[security]]
+isin = "US0000000001"
+source_country = "US"
+tax_treatment = "foreign"
+max_creditable_rate = 0.15
+""",
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 0.00 EUR" in result.stdout
+    assert "Nicht in Zeile 41 (fehlende ISIN-Regel oder Bruttobetrag): 15.00 EUR" in result.stdout

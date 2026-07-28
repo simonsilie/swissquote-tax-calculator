@@ -11,6 +11,7 @@ wheels/
 
 # Sensitive data
 .env
+withholding-tax-rules.toml
 data/
 output.csv
 

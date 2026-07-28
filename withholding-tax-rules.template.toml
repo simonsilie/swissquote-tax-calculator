@@ -1,0 +1,75 @@
+# Copy this file to withholding-tax-rules.toml. [[country]] entries provide
+# defaults by the first two ISIN characters; [[security]] entries override them
+# for individual securities. Verify treatment and credit rate against your tax
+# certificate and the applicable double-taxation agreement before filing.
+#
+# tax_treatment values:
+# - domestic: German capital gains tax; max_creditable_rate must be 0.0.
+# - foreign: Foreign withholding tax; credit is limited to gross dividend times rate.
+#
+# instrument values (optional, default "share"):
+# - share: Ordinary share dividend reported in Anlage KAP.
+# - fund: Investment fund / ETF distribution reported in Anlage KAP-INV.
+
+[[country]]
+isin_prefix = "DE"
+source_country = "DE"
+tax_treatment = "domestic"
+max_creditable_rate = 0.0
+
+# Example foreign ISIN prefix. Uncomment and verify the values before use.
+# [[country]]
+# isin_prefix = "CH"
+# source_country = "CH"
+# tax_treatment = "foreign"
+# max_creditable_rate = 0.15
+
+# [[country]]
+# isin_prefix = "US"
+# source_country = "US"
+# tax_treatment = "foreign"
+# max_creditable_rate = 0.15
+
+# [[country]]
+# isin_prefix = "FR"
+# source_country = "FR"
+# tax_treatment = "foreign"
+# max_creditable_rate = 0.128
+
+# [[country]]
+# isin_prefix = "NL"
+# source_country = "NL"
+# tax_treatment = "foreign"
+# max_creditable_rate = 0.15
+
+# [[country]]
+# isin_prefix = "JP"
+# source_country = "JP"
+# tax_treatment = "foreign"
+# max_creditable_rate = 0.15
+
+# [[country]]
+# isin_prefix = "ES"
+# source_country = "ES"
+# tax_treatment = "foreign"
+# max_creditable_rate = 0.15
+
+# [[country]]
+# isin_prefix = "CA"
+# source_country = "CA"
+# tax_treatment = "foreign"
+# max_creditable_rate = 0.15
+
+# UK dividends generally have no withholding tax. Verify special cases before use.
+# [[country]]
+# isin_prefix = "GB"
+# source_country = "GB"
+# tax_treatment = "foreign"
+# max_creditable_rate = 0.0
+
+# Use an exact rule for an exception to the country default, for example an ETF.
+# [[security]]
+# isin = "CH0000000000"
+# source_country = "US"
+# tax_treatment = "foreign"
+# max_creditable_rate = 0.15
