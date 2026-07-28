@@ -7,18 +7,26 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 
 
-def run_cli(csv_content: str, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+def run_cli(
+    csv_content: str,
+    arguments: list[str],
+    environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     """Run the tax evaluation CLI with temporary Swissquote CSV content."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, encoding="latin1") as file:
         file.write(csv_content)
         csv_file_path = file.name
 
     try:
+        environment_variables = os.environ.copy()
+        if environment:
+            environment_variables.update(environment)
         return subprocess.run(
             ["uv", "run", "steuer-auswertung", csv_file_path, *arguments],
             capture_output=True,
             text=True,
             cwd=PROJECT_ROOT,
+            env=environment_variables,
         )
     finally:
         os.unlink(csv_file_path)

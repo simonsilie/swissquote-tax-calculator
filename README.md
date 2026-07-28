@@ -29,7 +29,7 @@ uv sync
 ## Transaktions-CSV exportieren
 
 1. Melden Sie sich im [Swissquote-Webportal](https://trade.swissquote.ch) an
-2. Navigieren Sie zu **Trading** → **Meine Konten** → **Transaktionen**
+2. Navigieren Sie zu **Trading** → **Portfolio** → **Transaktionen**
 3. Wählen Sie den gewünschten Zeitraum (z.B. 01.01. bis 31.12.)
 4. Klicken Sie auf **Exportieren** und wählen Sie **CSV**
 5. Der Download liefert eine Semikolon-getrennte Datei im Latin1-Encoding
@@ -57,11 +57,40 @@ uv run steuer-auswertung transactions.csv [OPTIONEN]
 | `--purchase-types` | `Kauf` | Transaktionstypen für Wertpapierkäufe |
 | `--sale-types` | `Verkauf` | Transaktionstypen für Wertpapierverkäufe |
 | `--tax-year` | Auto | Steuerjahr bei einer CSV mit Käufen aus Vorjahren |
-| `--col-withholding-tax` | `Quellensteuer` | Optionale Spalte mit einbehaltener Quellensteuer |
+| `--col-withholding-tax` | `Kosten` | Spalte mit einbehaltener Quellensteuer im Swissquote-Standardexport |
 | `--col-withholding-tax-eur` | `Quellensteuer_EUR` | EUR-Spalte für Quellensteuer (Output) |
 | `--round` | nein | Auf ganze Euro runden |
 | `--no-details` | nein | Details nicht ausgeben |
 | `--output file.csv` | nein | Ergebnisse als CSV exportieren |
+
+### Konfiguration per Umgebungsvariable oder Datei
+
+Alle Optionen koennen auch als Umgebungsvariablen mit dem Praefix `SWISSQUOTE_TAX_` gesetzt werden. Aus
+`--fx-mode` wird beispielsweise `SWISSQUOTE_TAX_FX_MODE`. Kommandozeilenargumente haben Vorrang vor
+Umgebungsvariablen.
+
+```bash
+# Lokale Konfiguration aus der Vorlage erstellen und anpassen
+cp template.env .env
+# .env fuer diesen Shell-Prozess laden
+source .env
+uv run steuer-auswertung transactions.csv --no-details
+```
+
+Alternativ liest `--config` eine Datei mit Optionen im Format `option = wert`. Auch hier ueberschreiben
+Kommandozeilenargumente die konfigurierten Werte.
+
+```ini
+# tax-calculator.conf
+fx-mode = annual
+fx-usd = 1.08
+fx-chf = 0.95
+round = true
+```
+
+```bash
+uv run steuer-auswertung transactions.csv --config tax-calculator.conf
+```
 
 ### Wechselkurs-Modi
 
@@ -143,15 +172,15 @@ Im `annual`-Modus wird nur ein Kurs pro Währung ausgegeben.
 
 ### Quellensteuer
 
-Enthält der Swissquote-Export eine Spalte mit einbehaltener Quellensteuer, liest das Skript sie standardmäßig unter dem Namen `Quellensteuer` ein. Abweichende Exportbezeichnungen lassen sich mit `--col-withholding-tax` angeben. Der Betrag wird mit demselben Tages- oder Jahreskurs wie der zugehörige Ertrag in EUR umgerechnet. Negative Abzüge im CSV-Export werden als positiver anrechenbarer Betrag ausgewiesen:
+Im Swissquote-Standardexport wird die einbehaltene Quellensteuer in der Spalte `Kosten` geführt; diese verwendet das Skript standardmäßig. Abweichende Exportbezeichnungen lassen sich mit `--col-withholding-tax` angeben. Der Betrag wird mit demselben Tages- oder Jahreskurs wie der zugehörige Ertrag in EUR umgerechnet. Negative Abzüge im CSV-Export werden als positiver anrechenbarer Betrag ausgewiesen:
 
 - Quellensteuer auf Dividenden und Zinsen zusammen für Anlage KAP Zeile 41
 
-Enthält der Export keine eigene Quellensteuer-Spalte, sondern weist den Abzug in der Spalte `Kosten` aus, wird diese Spalte beim Aufruf angegeben:
+Bei einem abweichenden CSV-Export mit einer eigenen Spalte `Quellensteuer` wird diese beim Aufruf angegeben:
 
 ```bash
 uv run steuer-auswertung --fx-mode daily \
-  --col-withholding-tax Kosten \
+  --col-withholding-tax Quellensteuer \
   transactions.csv
 ```
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-import argparse
 import sys
+from argparse import Namespace
 from pathlib import Path
 
+import configargparse
 import polars as pl
 
 from taxes.currency_conversion import apply_fx_rates_annual, apply_fx_rates_daily
@@ -24,18 +25,24 @@ DEFAULT_COLUMNS: dict[str, str] = {
     "currency": "Währung",
     "net_amount": "Nettobetrag",
     "net_amount_eur": "Nettobetrag_EUR",
-    "withholding_tax": "Quellensteuer",
+    "withholding_tax": "Kosten",
     "withholding_tax_eur": "Quellensteuer_EUR",
     "isin": "ISIN",
     "quantity": "Anzahl",
 }
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args() -> Namespace:
     """Parse CLI arguments for the Swissquote tax evaluation tool."""
-    parser = argparse.ArgumentParser(
+    parser = configargparse.ArgParser(
+        auto_env_var_prefix="SWISSQUOTE_TAX_",
         description="Steuerauswertung für Swissquote-Transaktionen",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        formatter_class=configargparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--config",
+        is_config_file=True,
+        help="Pfad zu einer Config-Datei; CLI-Argumente überschreiben deren Werte",
     )
     parser.add_argument("csv_file", type=Path, nargs="?", help="Pfad zur CSV-Datei (Swissquote Export)")
     parser.add_argument("--encoding", default="latin1", help="CSV-Encoding")

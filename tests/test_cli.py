@@ -41,6 +41,28 @@ def test_basic_functionality_daily_mode() -> None:
     assert "Keine Eintragung für Aktienverkäufe" in result.stdout
 
 
+def test_environment_variables_configure_the_cli() -> None:
+    """Environment variables provide the same settings as command-line options."""
+    csv_content = """Datum;Transaktionen;Name;Nettobetrag;Währung
+31-12-2025 15:57:09;Dividende;US ETF;100.00;USD
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--no-details"],
+        environment={
+            "SWISSQUOTE_TAX_FX_MODE": "annual",
+            "SWISSQUOTE_TAX_FX_USD": "1.0",
+            "SWISSQUOTE_TAX_FX_CHF": "1.0",
+            "SWISSQUOTE_TAX_FX_EUR": "1.0",
+        },
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "Jahresdurchschnitt" in result.stdout
+    assert "100.00 EUR" in result.stdout
+
+
 def test_multiple_years_require_an_explicit_tax_year() -> None:
     """A historical CSV needs --tax-year to identify the requested report."""
     csv_content = """Datum;Auftrag #;Transaktionen;Symbol;Name;ISIN;Anzahl;Stückpreis;Kosten;Aufgelaufene Zinsen;Nettobetrag;Saldo;Währung
@@ -84,8 +106,8 @@ def test_annual_fx_mode_uses_configured_rate() -> None:
 
 
 def test_withholding_tax_is_converted_and_reported() -> None:
-    """Withholding tax is converted to EUR and reported for ELSTER."""
-    csv_content = """Datum;Transaktionen;Name;Nettobetrag;Quellensteuer;Währung
+    """The Swissquote Kosten column is converted and reported as withholding tax."""
+    csv_content = """Datum;Transaktionen;Name;Nettobetrag;Kosten;Währung
 31-12-2025 15:57:09;Dividende;US ETF;85.00;-15.00;USD
 01-01-2025 12:15:04;Zinsen auf Einlagen;CHF Konto;6.50;-3.50;CHF
 """
