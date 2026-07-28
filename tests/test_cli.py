@@ -81,3 +81,38 @@ def test_annual_fx_mode_uses_configured_rate() -> None:
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "Jahresdurchschnitt" in result.stdout
     assert "90.91 EUR" in result.stdout
+
+
+def test_withholding_tax_is_converted_and_reported() -> None:
+    """Withholding tax is converted to EUR and reported for ELSTER."""
+    csv_content = """Datum;Transaktionen;Name;Nettobetrag;Quellensteuer;Währung
+31-12-2025 15:57:09;Dividende;US ETF;85.00;-15.00;USD
+01-01-2025 12:15:04;Zinsen auf Einlagen;CHF Konto;6.50;-3.50;CHF
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 18.50 EUR" in result.stdout
+    assert "Davon Quellensteuer auf Dividenden: 15.00 EUR" in result.stdout
+    assert "Davon Quellensteuer auf Zinsen: 3.50 EUR" in result.stdout
+
+
+def test_separate_withholding_tax_transaction_is_reported() -> None:
+    """Separate withholding-tax bookings are converted and included in KAP line 41."""
+    csv_content = """Datum;Transaktionen;Name;Nettobetrag;Währung
+31-12-2025 15:57:09;Dividende;US ETF;85.00;USD
+31-12-2025 15:57:09;Withholding Tax;US ETF;-15.00;USD
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 15.00 EUR" in result.stdout
+    assert "Davon separate Quellensteuer-Buchungen: 15.00 EUR" in result.stdout

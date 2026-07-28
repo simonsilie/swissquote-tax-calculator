@@ -13,6 +13,7 @@ from taxes.transactions import detect_tax_year, load_csv, validate_data
 
 DEFAULT_DIVIDEND_TYPES: list[str] = ["Dividende"]
 DEFAULT_INTEREST_TYPES: list[str] = ["Zinsen auf Einlagen"]
+DEFAULT_WITHHOLDING_TAX_TYPES: list[str] = ["Steuerrückbehalt", "Quellensteuer", "Withholding Tax"]
 DEFAULT_PURCHASE_TYPES: list[str] = ["Kauf"]
 DEFAULT_SALE_TYPES: list[str] = ["Verkauf"]
 
@@ -23,6 +24,8 @@ DEFAULT_COLUMNS: dict[str, str] = {
     "currency": "Währung",
     "net_amount": "Nettobetrag",
     "net_amount_eur": "Nettobetrag_EUR",
+    "withholding_tax": "Quellensteuer",
+    "withholding_tax_eur": "Quellensteuer_EUR",
     "isin": "ISIN",
     "quantity": "Anzahl",
 }
@@ -76,6 +79,12 @@ def parse_args() -> argparse.Namespace:
         help="Transaktionstypen für Zinsen",
     )
     parser.add_argument(
+        "--withholding-tax-types",
+        nargs="+",
+        default=DEFAULT_WITHHOLDING_TAX_TYPES,
+        help="Transaktionstypen für separate Quellensteuer-Buchungen",
+    )
+    parser.add_argument(
         "--purchase-types",
         nargs="+",
         default=DEFAULT_PURCHASE_TYPES,
@@ -96,6 +105,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--col-currency", default=DEFAULT_COLUMNS["currency"], help="Währung-Spalte")
     parser.add_argument("--col-amount", default=DEFAULT_COLUMNS["net_amount"], help="Nettobetrag-Spalte")
+    parser.add_argument(
+        "--col-withholding-tax",
+        default=DEFAULT_COLUMNS["withholding_tax"],
+        help="Spalte mit einbehaltener Quellensteuer (optional)",
+    )
+    parser.add_argument(
+        "--col-withholding-tax-eur",
+        default=DEFAULT_COLUMNS["withholding_tax_eur"],
+        help="EUR-Spalte fuer Quellensteuer (Output)",
+    )
     parser.add_argument("--col-isin", default=DEFAULT_COLUMNS["isin"], help="ISIN-Spalte")
     parser.add_argument("--col-quantity", default=DEFAULT_COLUMNS["quantity"], help="Anzahl-Spalte")
     parser.add_argument(
@@ -124,7 +143,14 @@ def main() -> None:
     if args.csv_file is None:
         sys.exit("Fehler: csv_file ist erforderlich (z.B. steuer-auswertung transaktionen.csv)")
 
-    df = load_csv(args.csv_file, args.encoding, args.sep, args.col_date, args.col_amount)
+    df = load_csv(
+        args.csv_file,
+        args.encoding,
+        args.sep,
+        args.col_date,
+        args.col_amount,
+        args.col_withholding_tax,
+    )
 
     required_cols: list[str] = [args.col_type, args.col_currency, args.col_amount]
     missing: list[str] = [c for c in required_cols if c not in df.columns]
@@ -163,9 +189,35 @@ def main() -> None:
             args.fx_eur,
         )
 
+    if args.col_withholding_tax in df.columns:
+        if args.fx_mode == "daily":
+            df = apply_fx_rates_daily(
+                df,
+                fetcher,
+                args.col_date,
+                args.col_currency,
+                args.col_withholding_tax,
+                args.col_withholding_tax_eur,
+            )
+        else:
+            df = apply_fx_rates_annual(
+                df,
+                fetcher,
+                tax_year,
+                args.col_currency,
+                args.col_withholding_tax,
+                args.col_withholding_tax_eur,
+                args.fx_usd,
+                args.fx_chf,
+                args.fx_eur,
+            )
+
     tax_year_df = df.filter(pl.col(args.col_date).dt.year() == tax_year)
     dividends: pl.DataFrame = tax_year_df.filter(pl.col(args.col_type).is_in(args.dividend_types))
     interest: pl.DataFrame = tax_year_df.filter(pl.col(args.col_type).is_in(args.interest_types))
+    withholding_tax_transactions: pl.DataFrame = tax_year_df.filter(
+        pl.col(args.col_type).is_in(args.withholding_tax_types)
+    )
     stock_sales = calculate_realized_stock_results(
         df,
         args.purchase_types,
@@ -180,13 +232,33 @@ def main() -> None:
     total_dividends: float = dividends[args.col_eur].sum()
     total_interest: float = interest[args.col_eur].sum()
     total_stock_sales: float = float(stock_sales["Gewinn_Verlust_EUR"].sum())
+    total_dividend_withholding_tax = 0.0
+    total_interest_withholding_tax = 0.0
+    if args.col_withholding_tax_eur in df.columns:
+        total_dividend_withholding_tax = abs(float(dividends[args.col_withholding_tax_eur].sum()))
+        total_interest_withholding_tax = abs(float(interest[args.col_withholding_tax_eur].sum()))
+    total_withholding_tax_transactions = abs(float(withholding_tax_transactions[args.col_eur].sum()))
+    total_withholding_tax = (
+        total_dividend_withholding_tax + total_interest_withholding_tax + total_withholding_tax_transactions
+    )
 
     dividend_text = f"1. Anlage KAP-INV (Zeile 4 - ETF-Ausschüttungen): {format_amount(total_dividends, args.round)}"
     print(dividend_text)
     zinsen_text = f"2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   {format_amount(total_interest, args.round)}"
     print(zinsen_text)
+    if args.col_withholding_tax_eur in df.columns or not withholding_tax_transactions.is_empty():
+        print(
+            "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): "
+            f"{format_amount(total_withholding_tax, args.round)}"
+        )
+        print(f"   Davon Quellensteuer auf Dividenden: {format_amount(total_dividend_withholding_tax, args.round)}")
+        print(f"   Davon Quellensteuer auf Zinsen: {format_amount(total_interest_withholding_tax, args.round)}")
+        print(
+            "   Davon separate Quellensteuer-Buchungen: "
+            f"{format_amount(total_withholding_tax_transactions, args.round)}"
+        )
     stock_sales_text = (
-        f"3. Realisierte Gewinne/Verluste aus Aktienverkäufen: {format_amount(total_stock_sales, args.round)}"
+        f"4. Realisierte Gewinne/Verluste aus Aktienverkäufen: {format_amount(total_stock_sales, args.round)}"
     )
     print(stock_sales_text)
     print_stock_sale_tax_note(stock_sales, "Gewinn_Verlust_EUR", args.round)
@@ -198,9 +270,18 @@ def main() -> None:
             args.col_amount,
             args.col_currency,
             args.col_eur,
+            args.col_withholding_tax,
+            args.col_withholding_tax_eur,
         ]
         print_section("Details Dividenden", dividends, detail_cols, args.col_eur, args.round)
         print_section("Details Zinsen", interest, detail_cols, args.col_eur, args.round)
+        print_section(
+            "Details separate Quellensteuer-Buchungen",
+            withholding_tax_transactions,
+            detail_cols,
+            args.col_eur,
+            args.round,
+        )
         print_section(
             "Details Aktienverkäufe",
             stock_sales,

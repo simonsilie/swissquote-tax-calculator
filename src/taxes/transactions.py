@@ -7,7 +7,14 @@ import polars as pl
 from taxes.fx_rates import FALLBACK_FX_RATES
 
 
-def load_csv(path: Path, encoding: str, separator: str, date_col: str, amount_col: str) -> pl.DataFrame:
+def load_csv(
+    path: Path,
+    encoding: str,
+    separator: str,
+    date_col: str,
+    amount_col: str,
+    withholding_tax_col: str,
+) -> pl.DataFrame:
     """Load a Swissquote CSV and normalize its date and amount columns."""
     try:
         dataframe = pl.read_csv(
@@ -39,6 +46,18 @@ def load_csv(path: Path, encoding: str, separator: str, date_col: str, amount_co
             )
         else:
             dataframe = dataframe.with_columns(pl.col(amount_col).cast(pl.Float64).alias(amount_col))
+
+    if withholding_tax_col in dataframe.columns:
+        if dataframe[withholding_tax_col].dtype == pl.String:
+            dataframe = dataframe.with_columns(
+                pl.col(withholding_tax_col)
+                .str.replace_all(",", ".")
+                .str.replace_all(r"^-$", "0")
+                .cast(pl.Float64)
+                .alias(withholding_tax_col)
+            )
+        else:
+            dataframe = dataframe.with_columns(pl.col(withholding_tax_col).cast(pl.Float64).alias(withholding_tax_col))
 
     return dataframe
 

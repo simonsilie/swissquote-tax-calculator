@@ -10,6 +10,7 @@ Python-Skript zur Auswertung von Swissquote-Transaktions-CSVs für die deutsche 
 - **Validierung** der CSV (fehlende Werte, unbekannte Währungen, Mehrjahres-Check)
 - Wechselkurs-Umrechnung (EUR/USD, EUR/CHF, EUR/EUR)
 - Ausgabe für Anlage KAP-INV (Dividenden) und Anlage KAP (Zinsen)
+- Erfassung einbehaltener Quellensteuer mit Umrechnung in EUR für die Anrechnung in ELSTER
 - **Realisierte Gewinne und Verluste aus Aktienverkäufen** mit FIFO-Anschaffungskosten
 - CSV-Export der Details
 - **Persistenter Cache** für Wechselkurse (`~/.cache/swissquote-tax/fx_rates.json`)
@@ -56,6 +57,8 @@ uv run steuer-auswertung transactions.csv [OPTIONEN]
 | `--purchase-types` | `Kauf` | Transaktionstypen für Wertpapierkäufe |
 | `--sale-types` | `Verkauf` | Transaktionstypen für Wertpapierverkäufe |
 | `--tax-year` | Auto | Steuerjahr bei einer CSV mit Käufen aus Vorjahren |
+| `--col-withholding-tax` | `Quellensteuer` | Optionale Spalte mit einbehaltener Quellensteuer |
+| `--col-withholding-tax-eur` | `Quellensteuer_EUR` | EUR-Spalte für Quellensteuer (Output) |
 | `--round` | nein | Auf ganze Euro runden |
 | `--no-details` | nein | Details nicht ausgeben |
 | `--output file.csv` | nein | Ergebnisse als CSV exportieren |
@@ -119,7 +122,10 @@ Für das Steuerjahr 2025 entsprechen die Formularfelder der Anlage KAP üblicher
   Wechselkurse (Tageskurs 2025-06-15): EUR/USD=1.0751, EUR/CHF=0.9498
 1. Anlage KAP-INV (Zeile 4 - ETF-Ausschüttungen): 175 EUR
 2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   2 EUR
-3. Realisierte Gewinne/Verluste aus Aktienverkäufen: 250 EUR
+3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 23 EUR
+   Davon Quellensteuer auf Dividenden: 22 EUR
+   Davon Quellensteuer auf Zinsen: 1 EUR
+4. Realisierte Gewinne/Verluste aus Aktienverkäufen: 250 EUR
   Anlage KAP: In Kapitalerträgen ohne inländischen Steuerabzug berücksichtigen.
   Davon Aktiengewinne (separates Formularfeld): 250 EUR
 
@@ -134,6 +140,22 @@ Datum       Transaktionen     Nettobetrag  Währung  Nettobetrag_EUR
 ```
 
 Im `annual`-Modus wird nur ein Kurs pro Währung ausgegeben.
+
+### Quellensteuer
+
+Enthält der Swissquote-Export eine Spalte mit einbehaltener Quellensteuer, liest das Skript sie standardmäßig unter dem Namen `Quellensteuer` ein. Abweichende Exportbezeichnungen lassen sich mit `--col-withholding-tax` angeben. Der Betrag wird mit demselben Tages- oder Jahreskurs wie der zugehörige Ertrag in EUR umgerechnet. Negative Abzüge im CSV-Export werden als positiver anrechenbarer Betrag ausgewiesen:
+
+- Quellensteuer auf Dividenden und Zinsen zusammen für Anlage KAP Zeile 41
+
+Enthält der Export keine eigene Quellensteuer-Spalte, sondern weist den Abzug in der Spalte `Kosten` aus, wird diese Spalte beim Aufruf angegeben:
+
+```bash
+uv run steuer-auswertung --fx-mode daily \
+  --col-withholding-tax Kosten \
+  transactions.csv
+```
+
+Die endgültige Anrechenbarkeit und die Felder des aktuellen ELSTER-Formulars sind vor Abgabe zu prüfen.
 
 ## Validierungen
 
