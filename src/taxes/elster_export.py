@@ -1,4 +1,3 @@
-import shutil
 from pathlib import Path
 
 import markdown
@@ -332,15 +331,6 @@ def export_elster_mapping(
         round_amount=round_amount,
     )
 
-    if shutil.which("weasyprint") is not None or _has_import("weasyprint"):
-        _generate_pdf(md_path)
+    _generate_pdf(md_path)
 
     return md_path
-
-
-def _has_import(module_name: str) -> bool:
-    try:
-        __import__(module_name)
-    except ImportError:
-        return False
-    return True

@@ -21,6 +21,12 @@ Python-Skript zur Auswertung von Swissquote-Transaktions-CSVs für die deutsche 
 brew install uv  # macOS
 # oder: curl -LsSf https://astral.sh/uv/install.sh | sh
 
+# System-Abhängigkeiten für PDF-Export via WeasyPrint
+brew install pango                          # macOS
+sudo apt install libpango-1.0-0             # Ubuntu / Debian
+sudo dnf install pango                      # Fedora / RHEL
+sudo pacman -S pango                        # Arch Linux
+
 # Abhängigkeiten installieren
 uv sync
 ```
