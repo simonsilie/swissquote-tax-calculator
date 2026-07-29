@@ -64,7 +64,7 @@ class SecurityTaxRules(dict[str, SecurityTaxRule]):
         if len(prefix) == 2 and prefix.isalpha():
             if prefix == "DE":
                 return SecurityTaxRule(source_country="DE", tax_treatment="domestic", max_creditable_rate=0.0)
-            logger.info(f"ISIN {key} without explicit rule — classified as foreign {prefix} stock (15% creditable)")
+            logger.debug(f"ISIN {key} without explicit rule — classified as foreign {prefix} stock (15% creditable)")
             return SecurityTaxRule(source_country=prefix, tax_treatment="foreign", max_creditable_rate=0.15)
         return default
 
@@ -126,7 +126,7 @@ def _load_tax_rule(entry: dict[str, object], identifier: str) -> SecurityTaxRule
         raise ValueError(f"Eine domestic-Regel für {identifier} muss max_creditable_rate = 0 setzen")
 
     if "instrument" not in entry:
-        logger.info(f"Instrument not specified for {identifier}, defaulting to 'share'")
+        logger.debug(f"Instrument not specified for {identifier}, defaulting to 'share'")
     instrument = str(entry.get("instrument", "share")).lower()
     if instrument not in {"fund", "share"}:
         raise ValueError(f"Ungültige instrument-Angabe für {identifier}: {instrument!r} (erlaubt: fund, share)")
