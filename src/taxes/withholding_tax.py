@@ -15,6 +15,13 @@ FUND_FORM = "Anlage KAP-INV"
 DOMESTIC_SHARE_FORM = "Anlage KAP inländisch"
 FOREIGN_SHARE_FORM = "Anlage KAP ausländisch"
 
+TEILFREISTELLUNG_RATES: dict[str, float] = {
+    "equity": 0.30,
+    "mixed": 0.15,
+    "real_estate": 0.60,
+    "other": 0.00,
+}
+
 
 @dataclass(frozen=True)
 class SecurityTaxRule:
@@ -24,6 +31,7 @@ class SecurityTaxRule:
     tax_treatment: str
     max_creditable_rate: float
     instrument: str = "share"
+    fund_type: str | None = None
 
 
 class SecurityTaxRules(dict[str, SecurityTaxRule]):
@@ -123,7 +131,20 @@ def _load_tax_rule(entry: dict[str, object], identifier: str) -> SecurityTaxRule
     if instrument not in {"fund", "share"}:
         raise ValueError(f"Ungültige instrument-Angabe für {identifier}: {instrument!r} (erlaubt: fund, share)")
 
-    return SecurityTaxRule(source_country, tax_treatment, max_creditable_rate, instrument)
+    fund_type: str | None = None
+    if "fund_type" in entry:
+        raw_fund_type = str(entry["fund_type"]).lower()
+        valid_fund_types = {"equity", "mixed", "real_estate", "other"}
+        if raw_fund_type not in valid_fund_types:
+            raise ValueError(
+                f"Ungültige fund_type-Angabe für {identifier}: {raw_fund_type!r} "
+                f"(erlaubt: {', '.join(sorted(valid_fund_types))})"
+            )
+        if instrument != "fund":
+            raise ValueError(f"fund_type für {identifier} ist nur für instrument='fund' erlaubt")
+        fund_type = raw_fund_type
+
+    return SecurityTaxRule(source_country, tax_treatment, max_creditable_rate, instrument, fund_type)
 
 
 def load_security_tax_rules(path: Path | None) -> SecurityTaxRules:
@@ -183,17 +204,24 @@ def tag_dividend_forms(
     holdings are ordinary shares in Anlage KAP, split by source country: German
     shares are domestic capital income, every other share is foreign. The source
     country comes from a matching rule, otherwise from the two-letter ISIN prefix.
+    Fund rows also receive a ``Fundart`` label for Teilfreistellung grouping.
     """
     forms: list[str] = []
+    fund_types: list[str | None] = []
     for row in dataframe.iter_rows(named=True):
         isin = str(row.get(isin_col) or "").upper()
         rule = rules.get(isin)
         if rule and rule.instrument == "fund":
             forms.append(FUND_FORM)
+            fund_types.append(rule.fund_type)
             continue
         source_country = rule.source_country if rule else isin[:2]
         forms.append(DOMESTIC_SHARE_FORM if source_country == "DE" else FOREIGN_SHARE_FORM)
-    return dataframe.with_columns(pl.Series("Formular", forms, dtype=pl.String))
+        fund_types.append(None)
+    return dataframe.with_columns(
+        pl.Series("Formular", forms, dtype=pl.String),
+        pl.Series("Fundart", fund_types, dtype=pl.String),
+    )
 
 
 def classify_embedded_withholding_taxes(

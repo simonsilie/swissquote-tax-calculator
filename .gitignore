@@ -14,6 +14,8 @@ wheels/
 withholding-tax-rules.toml
 data/
 output.csv
+tax_summary_elster.md
+tax_summary_elster.pdf
 
 # Tool caches
 .pytest_cache/

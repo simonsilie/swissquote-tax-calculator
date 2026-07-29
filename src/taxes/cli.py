@@ -8,6 +8,7 @@ import polars as pl
 from loguru import logger
 
 from taxes.currency_conversion import apply_fx_rates_daily
+from taxes.elster_export import export_elster_mapping
 from taxes.fx_rates import CACHE_FILE, DailyFXRateFetcher
 from taxes.reporting import (
     export_details,
@@ -131,6 +132,24 @@ def parse_args() -> Namespace:
     parser.add_argument("--round", action="store_true", help="Ergebnisse auf ganze Euro runden")
     parser.add_argument("--no-details", action="store_true", help="Details nicht ausgeben")
     parser.add_argument("--output", help="Ergebnisse in CSV-Datei schreiben")
+    parser.add_argument(
+        "--export-summary",
+        default=True,
+        action="store_true",
+        help="ELSTER-Mapping-Datei (tax_summary_elster.md) generieren (Standard: an)",
+    )
+    parser.add_argument(
+        "--no-export-summary",
+        dest="export_summary",
+        action="store_false",
+        help="Keine ELSTER-Mapping-Datei generieren",
+    )
+    parser.add_argument(
+        "--export-dir",
+        type=Path,
+        default=Path("."),
+        help="Ausgabeverzeichnis fuer die ELSTER-Mapping-Datei (Standard: aktuelles Verzeichnis)",
+    )
     parser.add_argument(
         "--withholding-tax-rules",
         type=Path,
@@ -382,6 +401,21 @@ def main() -> None:
         stock_losses,
         args.round,
     )
+
+    if args.export_summary:
+        export_elster_mapping(
+            output_dir=args.export_dir,
+            tax_year=tax_year,
+            total_domestic_share_dividends=total_domestic_share_dividends,
+            total_foreign_share_dividends=total_foreign_share_dividends,
+            total_interest=total_interest,
+            total_fund_dividends=total_fund_dividends,
+            withholding_tax_summary=withholding_tax_summary,
+            stock_gains=stock_gains,
+            stock_losses=stock_losses,
+            fund_dividends=fund_dividends,
+            round_amount=args.round,
+        )
 
 
 if __name__ == "__main__":
