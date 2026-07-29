@@ -142,10 +142,10 @@ Das Skript lädt für **jede Transaktion** den Wechselkurs des exakten Transakti
 ### Beispiel
 
 ```bash
-# Tageskurse (Standard) - nutzt Cache automatisch
+# Tageskurse - nutzt Cache automatisch
 uv run steuer-auswertung transactions-from-01012025-to-31122025.csv --no-details
 
-# Verkauf 2025 mit Anschaffungskosten aus Vorjahren (Tageskursmodus)
+# Verkauf 2025 mit Anschaffungskosten aus Vorjahren
 uv run steuer-auswertung transaktionshistorie.csv --tax-year 2025
 ```
 

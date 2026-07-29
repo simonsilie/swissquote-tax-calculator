@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Optional, Sequence
 from urllib.error import URLError
 
+from loguru import logger
+
 
 FALLBACK_FX_RATES: dict[int, dict[str, float]] = {
     2025: {"USD": 1.05, "CHF": 0.93, "EUR": 1.00},
@@ -31,7 +33,12 @@ class DailyFXRateFetcher:
     def __init__(self, cache_file: Optional[Path] = None) -> None:
         self.cache_file = cache_file or CACHE_FILE
         self._cache: dict[str, dict[str, float]] = {}
-        self._offline = os.environ.get("SWISSQUOTE_TAX_OFFLINE", "").lower() in ("1", "true", "yes")
+        self._offline = False
+        raw = os.environ.get("SWISSQUOTE_TAX_OFFLINE", "")
+        if raw.lower() in ("1", "true", "yes"):
+            self._offline = True
+        elif raw and raw.lower() not in ("0", "false", "no"):
+            logger.warning(f"Invalid SWISSQUOTE_TAX_OFFLINE value '{raw}', treating as disabled")
         self._load_cache()
 
     def _load_cache(self) -> None:
@@ -39,7 +46,11 @@ class DailyFXRateFetcher:
             try:
                 with open(self.cache_file, "r", encoding="utf-8") as f:
                     self._cache = json.load(f)
-            except json.JSONDecodeError, OSError:
+            except json.JSONDecodeError:
+                logger.warning(f"Corrupted FX rate cache file '{self.cache_file}', starting fresh")
+                self._cache = {}
+            except OSError as e:
+                logger.warning(f"Cannot read FX rate cache file '{self.cache_file}': {e}")
                 self._cache = {}
 
     def _save_cache(self) -> None:
@@ -49,8 +60,8 @@ class DailyFXRateFetcher:
             with open(tmp_file, "w", encoding="utf-8") as f:
                 json.dump(self._cache, f, ensure_ascii=False, indent=2)
             tmp_file.replace(self.cache_file)
-        except OSError:
-            pass
+        except OSError as e:
+            logger.warning(f"Failed to save FX rate cache: {e}")
 
     def _fetch_daily_from_api(self, target_date: date, currencies: Sequence[str]) -> Optional[dict[str, float]]:
         date_str = target_date.isoformat()
@@ -61,33 +72,50 @@ class DailyFXRateFetcher:
             req.add_header("User-Agent", "Mozilla/5.0 (compatible; TaxScript/1.0)")
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.load(response)
-        except URLError, json.JSONDecodeError, KeyError:
+        except URLError as e:
+            logger.warning(f"Cannot reach Frankfurter API for {date_str}: {e}")
+            return None
+        except json.JSONDecodeError:
+            logger.warning(f"Frankfurter API returned invalid JSON for {date_str}")
             return None
 
-        rates = data.get("rates", {})
+        rates = data.get("rates")
+        if rates is None:
+            logger.warning(f"Frankfurter API response missing 'rates' key for {date_str}")
+            return None
         if not rates:
+            logger.warning(f"Frankfurter API returned empty rates for {date_str}")
             return None
 
-        # Frankfurter returns rates directly for a single date, unlike range
-        # queries where rates are nested under their ISO date.
         day_rates = rates.get(date_str, rates)
         result: dict[str, float] = {"EUR": 1.00}
         for curr in currencies:
             if curr in day_rates:
                 result[curr] = round(day_rates[curr], 4)
         if len(result) == 1:
+            logger.warning(
+                f"Frankfurter API returned no requested currencies for {date_str} (found keys: {sorted(day_rates.keys())})",
+            )
             return None
         return result
 
     def get_fallback_rates(self, year: int) -> dict[str, float]:
-        return FALLBACK_FX_RATES.get(year, FALLBACK_FX_RATES[2025])
+        if year not in FALLBACK_FX_RATES:
+            raise KeyError(f"No fallback FX rates for year {year}")
+        return FALLBACK_FX_RATES[year]
 
     def get_rate(self, target_date: date, currency: str) -> float:
         if currency == "EUR":
             return 1.0
 
         if self._offline:
-            return self.get_fallback_rates(target_date.year).get(currency, 1.0)
+            rate = self.get_fallback_rates(target_date.year).get(currency)
+            if rate is None:
+                logger.warning(
+                    f"Unknown currency '{currency}' for {target_date} — no fallback rate, assuming 1:1",
+                )
+                return 1.0
+            return rate
 
         date_str = target_date.isoformat()
         year = target_date.year
@@ -105,9 +133,15 @@ class DailyFXRateFetcher:
         fallback = self.get_fallback_rates(year)
         if date_str not in self._cache:
             self._cache[date_str] = {}
-        self._cache[date_str][currency] = fallback.get(currency, 1.0)
+        rate = fallback.get(currency)
+        if rate is None:
+            logger.warning(
+                f"Unknown currency '{currency}' for {date_str} — no fallback rate, assuming 1:1",
+            )
+            return 1.0
+        self._cache[date_str][currency] = rate
         self._save_cache()
-        return fallback.get(currency, 1.0)
+        return rate
 
     def get_rates_for_date(self, target_date: date) -> dict[str, float]:
         result = {}

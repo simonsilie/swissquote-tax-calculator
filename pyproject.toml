@@ -5,6 +5,7 @@ description = "CLI tool to evaluate Swissquote bank transaction CSVs for German 
 requires-python = ">=3.14"
 dependencies = [
     "configargparse>=1.7",
+    "loguru>=0.7.0",
     "polars>=1.16.0",
     "pyarrow>=25.0.0",
 ]

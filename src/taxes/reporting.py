@@ -69,9 +69,7 @@ def print_form_summary(
     )
     print(f"  Zeile 41  Anrechenbare ausländische Steuern: {format_amount(foreign_creditable, round_amount)}")
     print(f"  Zeile 37  Kapitalertragsteuer: {format_amount(domestic_capital_gains_tax, round_amount)}")
-    print(
-        f"  Zeile 38  Solidaritätszuschlag: {format_amount(domestic_solidarity_surcharge, round_amount)}"
-    )
+    print(f"  Zeile 38  Solidaritätszuschlag: {format_amount(domestic_solidarity_surcharge, round_amount)}")
     if stock_gains or stock_losses:
         print(
             "  Aktienveräußerungen (in den Kapitalerträgen ohne inländischen Steuerabzug, "

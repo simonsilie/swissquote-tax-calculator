@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 import polars as pl
+from loguru import logger
 
 from taxes.fx_rates import FALLBACK_FX_RATES
 
@@ -26,7 +27,8 @@ def load_csv(
         )
     except FileNotFoundError:
         sys.exit(f"Fehler: Datei '{path}' nicht gefunden")
-    except Exception as error:
+    except (ValueError, OSError) as error:
+        logger.error(f"Failed to read CSV '{path}': {error}")
         sys.exit(f"Fehler beim Einlesen der CSV: {error}")
 
     if date_col not in dataframe.columns:

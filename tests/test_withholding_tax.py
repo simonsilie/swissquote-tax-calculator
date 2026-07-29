@@ -4,7 +4,12 @@ import polars as pl
 import pytest
 
 from taxes.withholding_tax import load_security_tax_rules
-from taxes.withholding_tax import SecurityTaxRule, SecurityTaxRules, calculate_withholding_taxes, classify_embedded_withholding_taxes
+from taxes.withholding_tax import (
+    SecurityTaxRule,
+    SecurityTaxRules,
+    calculate_withholding_taxes,
+    classify_embedded_withholding_taxes,
+)
 from taxes.withholding_tax import DOMESTIC_SHARE_FORM, FOREIGN_SHARE_FORM, FUND_FORM, tag_dividend_forms
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import configargparse
 import polars as pl
+from loguru import logger
 
 from taxes.currency_conversion import apply_fx_rates_daily
 from taxes.fx_rates import CACHE_FILE, DailyFXRateFetcher
@@ -141,6 +142,8 @@ def parse_args() -> Namespace:
 
 def main() -> None:
     """Evaluate Swissquote transaction CSV for German tax declarations (Anlage KAP / KAP-INV)."""
+    logger.remove()
+    logger.add(sys.stderr, format="<level>{level: <8}</level> | {message}", level="INFO")
     args = parse_args()
 
     if args.clear_cache:
@@ -292,15 +295,15 @@ def main() -> None:
             print(
                 "   Davon Schweizer Verrechnungssteuer, separat rückforderbar: "
                 f"{format_amount(withholding_tax_summary.swiss_refundable, args.round)} "
-                '(Über eF85 direkt bei der Schweizer ESTV zurückzufordern)'
+                "(Über eF85 direkt bei der Schweizer ESTV zurückzufordern)"
             )
         print("4. Anlage KAP (Steueranrechnung):")
         print(
-                "   Zeile 37 - Kapitalertragsteuer: "
+            "   Zeile 37 - Kapitalertragsteuer: "
             f"{format_amount(withholding_tax_summary.domestic_capital_gains_tax, args.round)}"
         )
         print(
-                "   Zeile 38 - Solidaritätszuschlag: "
+            "   Zeile 38 - Solidaritätszuschlag: "
             f"{format_amount(withholding_tax_summary.domestic_solidarity_surcharge, args.round)}"
         )
         print(

@@ -5,6 +5,7 @@ from pathlib import Path
 import tomllib
 
 import polars as pl
+from loguru import logger
 
 from typing import overload
 
@@ -55,6 +56,7 @@ class SecurityTaxRules(dict[str, SecurityTaxRule]):
         if len(prefix) == 2 and prefix.isalpha():
             if prefix == "DE":
                 return SecurityTaxRule(source_country="DE", tax_treatment="domestic", max_creditable_rate=0.0)
+            logger.info(f"ISIN {key} without explicit rule — classified as foreign {prefix} stock (15% creditable)")
             return SecurityTaxRule(source_country=prefix, tax_treatment="foreign", max_creditable_rate=0.15)
         return default
 
@@ -99,9 +101,11 @@ def _load_tax_rule(entry: dict[str, object], identifier: str) -> SecurityTaxRule
         tax_treatment = str(entry["tax_treatment"])
         raw_max_creditable_rate = entry["max_creditable_rate"]
         if isinstance(raw_max_creditable_rate, bool) or not isinstance(raw_max_creditable_rate, (int, float, str)):
-            raise TypeError
+            raise ValueError(
+                f"max_creditable_rate für {identifier} hat ungültigen Typ: {type(raw_max_creditable_rate).__name__}"
+            )
         max_creditable_rate = float(raw_max_creditable_rate)
-    except (KeyError, TypeError, ValueError) as error:
+    except (KeyError, ValueError) as error:
         raise ValueError(
             f"Jede Regel für {identifier} benötigt source_country, tax_treatment und max_creditable_rate"
         ) from error
@@ -113,6 +117,8 @@ def _load_tax_rule(entry: dict[str, object], identifier: str) -> SecurityTaxRule
     if tax_treatment == "domestic" and max_creditable_rate != 0:
         raise ValueError(f"Eine domestic-Regel für {identifier} muss max_creditable_rate = 0 setzen")
 
+    if "instrument" not in entry:
+        logger.info(f"Instrument not specified for {identifier}, defaulting to 'share'")
     instrument = str(entry.get("instrument", "share")).lower()
     if instrument not in {"fund", "share"}:
         raise ValueError(f"Ungültige instrument-Angabe für {identifier}: {instrument!r} (erlaubt: fund, share)")
@@ -135,7 +141,8 @@ def load_security_tax_rules(path: Path | None) -> SecurityTaxRules:
 
     country_rules: dict[str, SecurityTaxRule] = {}
     rules = SecurityTaxRules(country_rules=country_rules)
-    for entry in config.get("country", []):
+    country_entries = config.get("country", [])
+    for entry in country_entries:
         try:
             isin_prefix = str(entry["isin_prefix"]).upper()
         except (KeyError, TypeError, ValueError) as error:
@@ -148,7 +155,8 @@ def load_security_tax_rules(path: Path | None) -> SecurityTaxRules:
 
         country_rules[isin_prefix] = _load_tax_rule(entry, f"ISIN-Präfix {isin_prefix}")
 
-    for entry in config.get("security", []):
+    security_entries = config.get("security", [])
+    for entry in security_entries:
         try:
             isin = str(entry["isin"]).upper()
         except (KeyError, TypeError, ValueError) as error:
@@ -157,6 +165,9 @@ def load_security_tax_rules(path: Path | None) -> SecurityTaxRules:
             raise ValueError(f"ISIN {isin} ist mehrfach in der Regeldatei definiert")
 
         rules[isin] = _load_tax_rule(entry, f"ISIN {isin}")
+
+    if not country_entries and not security_entries:
+        logger.warning(f"No withholding tax rules loaded from '{path}'")
 
     return rules
 
