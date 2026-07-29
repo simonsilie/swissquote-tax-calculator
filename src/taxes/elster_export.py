@@ -44,13 +44,13 @@ def _generate_markdown(
     round_amount: bool,
 ) -> Path:
     lines: list[str] = [
-        f"# ELSTER Tax Mapping Guide &mdash; Steuerjahr {tax_year}",
+        f"# ELSTER Tax Mapping Guide — Steuerjahr {tax_year}",
         "",
-        "> **Anleitung:** Die folgenden Betr&auml;ge exakt wie angegeben in die ELSTER-Formulare &uuml;bertragen.",
+        "> **Anleitung:** Die folgenden Beträge exakt wie angegeben in die ELSTER-Formulare übertragen.",
         "",
         "---",
         "",
-        "## 1. Anlage KAP &mdash; Allgemeine Kapitalertr&auml;ge",
+        "## 1. Anlage KAP — Allgemeine Kapitalerträge",
         "",
     ]
 
@@ -58,16 +58,16 @@ def _generate_markdown(
 
     lines.extend(
         [
-            "### Zeile 18 &mdash; Inl&auml;ndische Kapitalertr&auml;ge (deutsche Aktien)",
+            "### Zeile 18 — Inländische Kapitalerträge (deutsche Aktien)",
             "",
-            f"> **&#220;bertragen Sie `{_fmt(total_domestic_share_dividends, round_amount)}` in Anlage KAP &rarr; Zeile 18**",
+            f"> **Übertragen Sie `{_fmt(total_domestic_share_dividends, round_amount)}` in Anlage KAP → Zeile 18**",
             "",
-            "### Zeile 19 &mdash; Ausl&auml;ndische Kapitalertr&auml;ge",
+            "### Zeile 19 — Ausländische Kapitalerträge",
             "",
-            f"> **&#220;bertragen Sie `{_fmt(foreign_capital_income, round_amount)}` in Anlage KAP &rarr; Zeile 19**",
+            f"> **Übertragen Sie `{_fmt(foreign_capital_income, round_amount)}` in Anlage KAP → Zeile 19**",
             "",
-            f"> = Ausl&auml;ndische Dividenden {_fmt(total_foreign_share_dividends, round_amount)}"
-            f" + Ausl&auml;ndische Zinsen {_fmt(total_interest, round_amount)}",
+            f"> = Ausländische Dividenden {_fmt(total_foreign_share_dividends, round_amount)}"
+            f" + Ausländische Zinsen {_fmt(total_interest, round_amount)}",
             "",
         ]
     )
@@ -78,17 +78,17 @@ def _generate_markdown(
     ):
         lines.extend(
             [
-                "### Zeile 37 &mdash; Kapitalertragsteuer (deutsche ISINs)",
+                "### Zeile 37 — Kapitalertragsteuer (deutsche ISINs)",
                 "",
-                f"> **&#220;bertragen Sie `{_fmt(withholding_tax_summary.domestic_capital_gains_tax, round_amount)}`"
-                " in Anlage KAP &rarr; Zeile 37**",
+                f"> **Übertragen Sie `{_fmt(withholding_tax_summary.domestic_capital_gains_tax, round_amount)}`"
+                " in Anlage KAP → Zeile 37**",
                 "",
-                "### Zeile 38 &mdash; Solidarit&auml;tszuschlag (deutsche ISINs)",
+                "### Zeile 38 — Solidaritätszuschlag (deutsche ISINs)",
                 "",
-                f"> **&#220;bertragen Sie `{_fmt(withholding_tax_summary.domestic_solidarity_surcharge, round_amount)}`"
-                " in Anlage KAP &rarr; Zeile 38**",
+                f"> **Übertragen Sie `{_fmt(withholding_tax_summary.domestic_solidarity_surcharge, round_amount)}`"
+                " in Anlage KAP → Zeile 38**",
                 "",
-                "**Summe deutsche Kapitalertragsteuer einschlie&szlig;lich Soli:**"
+                "**Summe deutsche Kapitalertragsteuer einschließlich Soli:**"
                 f" {_fmt(withholding_tax_summary.domestic, round_amount)}",
                 "",
             ]
@@ -96,12 +96,12 @@ def _generate_markdown(
 
     lines.extend(
         [
-            "### Zeile 41 &mdash; Anrechenbare ausl&auml;ndische Quellensteuer",
+            "### Zeile 41 — Anrechenbare ausländische Quellensteuer",
             "",
-            f"> **&#220;bertragen Sie `{_fmt(withholding_tax_summary.foreign_creditable, round_amount)}`"
-            " in Anlage KAP &rarr; Zeile 41**",
+            f"> **Übertragen Sie `{_fmt(withholding_tax_summary.foreign_creditable, round_amount)}`"
+            " in Anlage KAP → Zeile 41**",
             "",
-            "Aufteilung nach L&auml;ndern (DBA-H&ouml;chstsatz max. 15% je Land):",
+            "Aufteilung nach Ländern (DBA-Höchstsatz max. 15% je Land):",
             "",
         ]
     )
@@ -113,21 +113,21 @@ def _generate_markdown(
             lines.append(f"| {country} | {_fmt(amount, round_amount)} |")
         lines.append("")
     else:
-        lines.append("Keine anrechenbaren ausl&auml;ndischen Quellensteuern vorhanden.")
+        lines.append("Keine anrechenbaren ausländischen Quellensteuern vorhanden.")
         lines.append("")
 
     if withholding_tax_summary.foreign_excess > 0:
         lines.append(
-            f"**Nicht anrechenbarer Steuer&uuml;berhang:** {_fmt(withholding_tax_summary.foreign_excess, round_amount)}"
+            f"**Nicht anrechenbarer Steuerüberhang:** {_fmt(withholding_tax_summary.foreign_excess, round_amount)}"
         )
         lines.append("")
 
     if stock_gains != 0 or stock_losses != 0:
         lines.extend(
             [
-                "### Aktienver&auml;u&szlig;erungen",
+                "### Aktienveräußerungen",
                 "",
-                "In den Kapitalertr&auml;gen ohne inl&auml;ndischen Steuerabzug, Aktien-Unterzeilen laut Formular:",
+                "In den Kapitalerträgen ohne inländischen Steuerabzug, Aktien-Unterzeilen laut Formular:",
                 "",
             ]
         )
@@ -141,12 +141,12 @@ def _generate_markdown(
         [
             "---",
             "",
-            "## 2. Anlage KAP-INV &mdash; Investmentfonds / ETFs",
+            "## 2. Anlage KAP-INV — Investmentfonds / ETFs",
             "",
-            "### Zeile 4 &mdash; Aussch&uuml;ttungen",
+            "### Zeile 4 — Ausschüttungen",
             "",
-            f"> **&#220;bertragen Sie `{_fmt(total_fund_dividends, round_amount)}`**"
-            " **in Anlage KAP-INV &rarr; Zeile 4 (Bruttoaussch&uuml;ttung)**",
+            f"> **Übertragen Sie `{_fmt(total_fund_dividends, round_amount)}`**"
+            " **in Anlage KAP-INV → Zeile 4 (Bruttoausschüttung)**",
             "",
         ]
     )
@@ -164,7 +164,7 @@ def _generate_markdown(
             fund_totals[key] = fund_totals.get(key, 0.0) + gross
 
         if fund_totals:
-            lines.append("| Fondsart | Teilfreistellung | Bruttoaussch&uuml;ttung | Steuerpflichtig |")
+            lines.append("| Fondsart | Teilfreistellung | Bruttoausschüttung | Steuerpflichtig |")
             lines.append("|----------|-----------------|------------------------|-----------------|")
             for ft, total in sorted(fund_totals.items()):
                 rate = TEILFREISTELLUNG_RATES.get(ft, 0.0)
@@ -185,7 +185,7 @@ def _generate_markdown(
         [
             "---",
             "",
-            "## 3. R&uuml;ckforderung Schweizer Verrechnungssteuer (Nicht-ELSTER)",
+            "## 3. Rückforderung Schweizer Verrechnungssteuer (Nicht-ELSTER)",
             "",
         ]
     )
@@ -193,48 +193,48 @@ def _generate_markdown(
     if withholding_tax_summary.swiss_refundable > 0:
         lines.extend(
             [
-                f"> **R&uuml;ckforderbarer Betrag: `{_fmt(withholding_tax_summary.swiss_refundable, round_amount)}`**",
+                f"> **Rückforderbarer Betrag: `{_fmt(withholding_tax_summary.swiss_refundable, round_amount)}`**",
                 "",
                 "Die Schweizer Verrechnungssteuer wird bei Schweizer Titeln (CH-ISIN) mit 35% auf"
-                " Aussch&uuml;ttungen erhoben. Davon sind gem&auml;&szlig; DBA Schweiz-Deutschland"
+                " Ausschüttungen erhoben. Davon sind gemäß DBA Schweiz-Deutschland"
                 " maximal 15% in Zeile 41 der Anlage KAP anrechenbar. Die verbleibenden 20%"
-                " m&uuml;ssen **separat** &uuml;ber das Formular eF85 direkt bei der"
-                " **Eidgen&ouml;ssischen Steuerverwaltung (ESTV)** zur&uuml;ckgefordert werden.",
+                " müssen **separat** über das Formular eF85 direkt bei der"
+                " **Eidgenössischen Steuerverwaltung (ESTV)** zurückgefordert werden.",
                 "",
                 "**Vorgehen:**",
-                "1. Formular eF85 online ausf&uuml;llen: [www.estv.admin.ch](https://www.estv.admin.ch)",
-                "2. Belege der Schweizer Depotbank (Swissquote) &uuml;ber einbehaltene Verrechnungssteuer beif&uuml;gen",
-                "3. Ans&auml;ssigkeitsbescheinigung des deutschen Finanzamts (Formular S1/RZ-430) einreichen",
-                "4. Antragsfrist: 3 Jahre nach Ablauf des Kalenderjahres der F&auml;lligkeit",
+                "1. Formular eF85 online ausfüllen: [www.estv.admin.ch](https://www.estv.admin.ch)",
+                "2. Belege der Schweizer Depotbank (Swissquote) über einbehaltene Verrechnungssteuer beifügen",
+                "3. Ansässigkeitsbescheinigung des deutschen Finanzamts (Formular S1/RZ-430) einreichen",
+                "4. Antragsfrist: 3 Jahre nach Ablauf des Kalenderjahres der Fälligkeit",
                 "",
             ]
         )
     else:
-        lines.append("Keine Schweizer Verrechnungssteuer &uuml;ber die 15%-DBA-Grenze hinaus angefallen.")
+        lines.append("Keine Schweizer Verrechnungssteuer über die 15%-DBA-Grenze hinaus angefallen.")
         lines.append("")
 
     lines.extend(
         [
             "---",
             "",
-            "## 4. Zusammenfassung &mdash; Alle ELSTER-Werte auf einen Blick",
+            "## 4. Zusammenfassung — Alle ELSTER-Werte auf einen Blick",
             "",
             "| Formular | Zeile | Bezeichnung | Betrag |",
             "|----------|-------|-------------|--------|",
-            f"| Anlage KAP | 18 | Inl&auml;ndische Kapitalertr&auml;ge | {_fmt(total_domestic_share_dividends, round_amount)} |",
-            f"| Anlage KAP | 19 | Ausl&auml;ndische Kapitalertr&auml;ge | {_fmt(foreign_capital_income, round_amount)} |",
+            f"| Anlage KAP | 18 | Inländische Kapitalerträge | {_fmt(total_domestic_share_dividends, round_amount)} |",
+            f"| Anlage KAP | 19 | Ausländische Kapitalerträge | {_fmt(foreign_capital_income, round_amount)} |",
             f"| Anlage KAP | 37 | Kapitalertragsteuer | {_fmt(withholding_tax_summary.domestic_capital_gains_tax, round_amount)} |",
-            f"| Anlage KAP | 38 | Solidarit&auml;tszuschlag | {_fmt(withholding_tax_summary.domestic_solidarity_surcharge, round_amount)} |",
+            f"| Anlage KAP | 38 | Solidaritätszuschlag | {_fmt(withholding_tax_summary.domestic_solidarity_surcharge, round_amount)} |",
             f"| Anlage KAP | 41 | Anrechenbare ausl. Quellensteuer | {_fmt(withholding_tax_summary.foreign_creditable, round_amount)} |",
-            f"| Anlage KAP | &mdash; | Aktiengewinne | {_fmt(stock_gains, round_amount)} |",
-            f"| Anlage KAP | &mdash; | Aktienverluste | {_fmt(stock_losses, round_amount)} |",
-            f"| Anlage KAP-INV | 4 | Investmentfonds-Aussch&uuml;ttungen | {_fmt(total_fund_dividends, round_amount)} |",
+            f"| Anlage KAP | — | Aktiengewinne | {_fmt(stock_gains, round_amount)} |",
+            f"| Anlage KAP | — | Aktienverluste | {_fmt(stock_losses, round_amount)} |",
+            f"| Anlage KAP-INV | 4 | Investmentfonds-Ausschüttungen | {_fmt(total_fund_dividends, round_amount)} |",
         ]
     )
 
     if withholding_tax_summary.swiss_refundable > 0:
         lines.append(
-            f"| eF85 (ESTV) | &mdash; | CH-Verrechnungssteuer R&uuml;ckforderung |"
+            f"| eF85 (ESTV) | — | CH-Verrechnungssteuer Rückforderung |"
             f" {_fmt(withholding_tax_summary.swiss_refundable, round_amount)} |"
         )
 
@@ -242,7 +242,7 @@ def _generate_markdown(
         [
             "",
             f"*Generiert am: Steuerjahr {tax_year}. Zeilennummern beziehen sich auf die Anlage KAP von ELSTER.*",
-            "*Vor Abgabe am ELSTER-Formular pr&uuml;fen.*",
+            "*Vor Abgabe am ELSTER-Formular prüfen.*",
             "",
         ]
     )
