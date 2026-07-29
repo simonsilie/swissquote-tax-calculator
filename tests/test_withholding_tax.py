@@ -102,10 +102,12 @@ def test_classify_embedded_withholding_taxes_applies_the_credit_limit() -> None:
             "Kosten_EUR": [-35.0, -26.375, -15.0],
         }
     )
-    rules = SecurityTaxRules({
-        "CH0012032048": SecurityTaxRule("CH", "foreign", 0.15),
-        "DE0007164600": SecurityTaxRule("DE", "domestic", 0.0),
-    })
+    rules = SecurityTaxRules(
+        {
+            "CH0012032048": SecurityTaxRule("CH", "foreign", 0.15),
+            "DE0007164600": SecurityTaxRule("DE", "domestic", 0.0),
+        }
+    )
 
     classified, summary = classify_embedded_withholding_taxes(
         dataframe,

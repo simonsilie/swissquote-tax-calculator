@@ -8,7 +8,13 @@ import polars as pl
 
 from taxes.currency_conversion import apply_fx_rates_annual, apply_fx_rates_daily
 from taxes.fx_rates import CACHE_FILE, DailyFXRateFetcher
-from taxes.reporting import export_details, format_amount, print_section, print_stock_sale_tax_note
+from taxes.reporting import (
+    export_details,
+    format_amount,
+    print_form_summary,
+    print_section,
+    print_stock_sale_tax_note,
+)
 from taxes.stock_sales import calculate_realized_stock_results
 from taxes.transactions import detect_tax_year, load_csv, validate_data
 from taxes.withholding_tax import (
@@ -335,17 +341,14 @@ def main() -> None:
             f"{format_amount(dividend_tax_summary.foreign_creditable, args.round)}"
         )
         print(
-            "   Davon Quellensteuer auf Zinsen: "
-            f"{format_amount(interest_tax_summary.foreign_creditable, args.round)}"
+            f"   Davon Quellensteuer auf Zinsen: {format_amount(interest_tax_summary.foreign_creditable, args.round)}"
         )
         if withholding_tax_summary.foreign_excess:
             print(
                 "   Nicht anrechenbarer ausländischer Steuerüberhang: "
                 f"{format_amount(withholding_tax_summary.foreign_excess, args.round)}"
             )
-        print(
-            "4. Anlage KAP (Steueranrechnung):"
-        )
+        print("4. Anlage KAP (Steueranrechnung):")
         print(
             "   Zeile 43 - Anrechenbare Kapitalertragsteuer: "
             f"{format_amount(withholding_tax_summary.domestic_capital_gains_tax, args.round)}"
@@ -415,6 +418,21 @@ def main() -> None:
     if args.output:
         export_details(dividends, interest, stock_sales, args.output, args.sep)
         print(f"\nDetails nach '{args.output}' exportiert")
+
+    stock_gains = float(stock_sales.filter(pl.col("Gewinn_Verlust_EUR") > 0)["Gewinn_Verlust_EUR"].sum())
+    stock_losses = float(stock_sales.filter(pl.col("Gewinn_Verlust_EUR") < 0)["Gewinn_Verlust_EUR"].sum())
+    print_form_summary(
+        total_domestic_share_dividends,
+        total_foreign_share_dividends,
+        total_fund_dividends,
+        total_interest,
+        withholding_tax_summary.foreign_creditable,
+        withholding_tax_summary.domestic_capital_gains_tax,
+        withholding_tax_summary.domestic_solidarity_surcharge,
+        stock_gains,
+        stock_losses,
+        args.round,
+    )
 
 
 if __name__ == "__main__":

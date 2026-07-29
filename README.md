@@ -204,6 +204,18 @@ Für das Steuerjahr 2025 entsprechen die Formularfelder der Anlage KAP üblicher
   Anlage KAP: In Kapitalerträgen ohne inländischen Steuerabzug berücksichtigen.
   Davon Aktiengewinne (separates Formularfeld): 250 EUR
 
+=== ZUSAMMENFASSUNG: WELCHER BETRAG IN WELCHE ZEILE (Anlage KAP 2025) ===
+Anlage KAP
+  Zeile 18  Inländische Kapitalerträge (deutsche Aktien): 28 EUR
+  Zeile 19  Ausländische Kapitalerträge: 216 EUR
+            = ausländische Dividenden 214 EUR + ausländische Zinsen 2 EUR
+  Zeile 41  Anrechenbare ausländische Steuern: 23 EUR
+  Zeile 43  Anrechenbare Kapitalertragsteuer: 7 EUR
+  Zeile 44  Anrechenbarer Solidaritätszuschlag: 0 EUR
+Anlage KAP-INV
+  Zeile 4   Investmentfonds-/ETF-Ausschüttungen: 175 EUR
+Zeilennummern beziehen sich auf die Anlage KAP 2025 – vor Abgabe am ELSTER-Formular prüfen.
+
 --- Details Dividenden ---
 Datum       Name          Nettobetrag  Währung  Nettobetrag_EUR
 01.03.2025  ETF XYZ       150.00       USD      138.89

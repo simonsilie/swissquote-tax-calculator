@@ -192,6 +192,30 @@ instrument = "fund"
     assert "Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): 0.00 EUR" in result.stdout
 
 
+def test_summary_combines_foreign_dividends_and_interest_in_line_19() -> None:
+    """The closing summary sums foreign dividends and interest into a single Zeile 19."""
+    csv_content = """Datum;Transaktionen;Name;ISIN;Nettobetrag;Kosten;Währung
+31-12-2025 15:57:09;Dividende;Nestle;CH0038863350;40.00;0.00;EUR
+30-06-2025 15:57:09;Zinsen auf Einlagen;;;10.00;0.00;EUR
+"""
+
+    result = run_cli(
+        csv_content,
+        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        withholding_tax_rules="""[[security]]
+isin = "CH0038863350"
+source_country = "CH"
+tax_treatment = "foreign"
+max_creditable_rate = 0.15
+""",
+    )
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "ZUSAMMENFASSUNG" in result.stdout
+    assert "Zeile 19  Ausländische Kapitalerträge: 50.00 EUR" in result.stdout
+    assert "= ausländische Dividenden 40.00 EUR + ausländische Zinsen 10.00 EUR" in result.stdout
+
+
 def test_domestic_tax_position_is_reported_even_when_empty() -> None:
     """The report retains its numbering when no domestic tax was withheld."""
     csv_content = """Datum;Transaktionen;Name;ISIN;Nettobetrag;Kosten;Währung
