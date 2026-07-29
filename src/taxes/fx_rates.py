@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import json
 import os
-import statistics
 import urllib.request
 from datetime import date
 from pathlib import Path
@@ -26,8 +25,7 @@ CACHE_FILE = CACHE_DIR / "fx_rates.json"
 class DailyFXRateFetcher:
     """Fetches daily EUR exchange rates with caching and multi-tier fallback.
 
-    Fallback chain: cached rate → Frankfurter daily API → Frankfurter annual API
-    → hardcoded EZB approximate rates.
+    Fallback chain: cached rate → Frankfurter daily API → hardcoded EZB approximate rates.
     """
 
     def __init__(self, cache_file: Optional[Path] = None) -> None:
@@ -81,34 +79,6 @@ class DailyFXRateFetcher:
             return None
         return result
 
-    def fetch_annual_rates(self, year: int) -> Optional[dict[str, float]]:
-        if self._offline:
-            return None
-        currency_param = ",".join([c for c in DEFAULT_CURRENCIES if c != "EUR"])
-        url = f"https://api.frankfurter.dev/v1/{year}-01-01..{year}-12-31?from=EUR&to={currency_param}"
-        try:
-            req = urllib.request.Request(url)
-            req.add_header("User-Agent", "Mozilla/5.0 (compatible; TaxScript/1.0)")
-            with urllib.request.urlopen(req, timeout=10) as response:
-                data = json.load(response)
-        except URLError, json.JSONDecodeError, KeyError:
-            return None
-
-        rates = data.get("rates", {})
-        target_currencies = [c for c in DEFAULT_CURRENCIES if c != "EUR"]
-        currency_values: dict[str, list[float]] = {c: [] for c in target_currencies}
-        for day_rates in rates.values():
-            for c in target_currencies:
-                if c in day_rates:
-                    currency_values[c].append(day_rates[c])
-
-        result: dict[str, float] = {"EUR": 1.00}
-        for c in target_currencies:
-            if not currency_values[c]:
-                return None
-            result[c] = round(statistics.mean(currency_values[c]), 4)
-        return result
-
     def get_fallback_rates(self, year: int) -> dict[str, float]:
         return FALLBACK_FX_RATES.get(year, FALLBACK_FX_RATES[2025])
 
@@ -131,14 +101,6 @@ class DailyFXRateFetcher:
             self._save_cache()
             if currency in daily_rates:
                 return daily_rates[currency]
-
-        annual_rates = self.fetch_annual_rates(year)
-        if annual_rates and currency in annual_rates:
-            if date_str not in self._cache:
-                self._cache[date_str] = {}
-            self._cache[date_str][currency] = annual_rates[currency]
-            self._save_cache()
-            return annual_rates[currency]
 
         fallback = self.get_fallback_rates(year)
         if date_str not in self._cache:

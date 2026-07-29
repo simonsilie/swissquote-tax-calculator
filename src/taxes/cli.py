@@ -6,7 +6,7 @@ from pathlib import Path
 import configargparse
 import polars as pl
 
-from taxes.currency_conversion import apply_fx_rates_annual, apply_fx_rates_daily
+from taxes.currency_conversion import apply_fx_rates_daily
 from taxes.fx_rates import CACHE_FILE, DailyFXRateFetcher
 from taxes.reporting import (
     export_details,
@@ -66,12 +66,6 @@ def parse_args() -> Namespace:
     parser.add_argument("--encoding", default="latin1", help="CSV-Encoding")
     parser.add_argument("--sep", default=";", help="CSV-Trennzeichen")
     parser.add_argument("--tax-year", type=int, help="Steuerjahr bei CSV-Dateien mit Transaktionshistorie")
-    parser.add_argument(
-        "--fx-mode",
-        choices=["daily", "annual"],
-        default="daily",
-        help="Wechselkurs-Modus: 'daily' = Tageskurse pro Transaktionsdatum (Standard), 'annual' = Jahresdurchschnitt",
-    )
     parser.add_argument(
         "--dividend-types",
         nargs="+",
@@ -187,41 +181,18 @@ def main() -> None:
 
     fetcher = DailyFXRateFetcher()
 
-    if args.fx_mode == "daily":
-        print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} (Tageskurse) ===")
-        df = apply_fx_rates_daily(df, fetcher, args.col_date, args.col_currency, args.col_amount, args.col_eur)
-    else:
-        if len(df[args.col_date].dt.year().unique()) > 1:
-            sys.exit("Fehler: --fx-mode annual unterstützt keine mehrjährigen CSV-Dateien")
-        print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} (Jahresdurchschnitt) ===")
-        df = apply_fx_rates_annual(
-            df,
-            fetcher,
-            tax_year,
-            args.col_currency,
-            args.col_amount,
-            args.col_eur,
-        )
+    print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} (Tageskurse) ===")
+    df = apply_fx_rates_daily(df, fetcher, args.col_date, args.col_currency, args.col_amount, args.col_eur)
 
     if args.col_withholding_tax in df.columns:
-        if args.fx_mode == "daily":
-            df = apply_fx_rates_daily(
-                df,
-                fetcher,
-                args.col_date,
-                args.col_currency,
-                args.col_withholding_tax,
-                args.col_withholding_tax_eur,
-            )
-        else:
-            df = apply_fx_rates_annual(
-                df,
-                fetcher,
-                tax_year,
-                args.col_currency,
-                args.col_withholding_tax,
-                args.col_withholding_tax_eur,
-            )
+        df = apply_fx_rates_daily(
+            df,
+            fetcher,
+            args.col_date,
+            args.col_currency,
+            args.col_withholding_tax,
+            args.col_withholding_tax_eur,
+        )
 
     if args.col_withholding_tax_eur in df.columns:
         df = df.with_columns(

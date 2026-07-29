@@ -24,34 +24,3 @@ def apply_fx_rates_daily(
         )
         .alias(eur_col)
     )
-
-
-def apply_fx_rates_annual(
-    dataframe: pl.DataFrame,
-    fetcher: DailyFXRateFetcher,
-    tax_year: int,
-    currency_col: str,
-    amount_col: str,
-    eur_col: str,
-) -> pl.DataFrame:
-    """Apply annual-average exchange rates to convert amounts to EUR."""
-
-    annual_rates = fetcher.fetch_annual_rates(tax_year)
-    if annual_rates is None:
-        annual_rates = fetcher.get_fallback_rates(tax_year)
-
-    print(
-        f"  Wechselkurse (Jahresdurchschnitt {tax_year}): "
-        f"EUR/USD={annual_rates['USD']:.4f}, EUR/CHF={annual_rates['CHF']:.4f}"
-    )
-
-    return dataframe.with_columns(
-        pl.when(pl.col(currency_col) == "USD")
-        .then(pl.col(amount_col) / annual_rates["USD"])
-        .when(pl.col(currency_col) == "CHF")
-        .then(pl.col(amount_col) / annual_rates["CHF"])
-        .when(pl.col(currency_col) == "EUR")
-        .then(pl.col(amount_col) / annual_rates["EUR"])
-        .otherwise(pl.col(amount_col))
-        .alias(eur_col)
-    )

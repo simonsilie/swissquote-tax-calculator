@@ -5,8 +5,7 @@ Python-Skript zur Auswertung von Swissquote-Transaktions-CSVs für die deutsche 
 ## Features
 
 - **Automatische Jahreserkennung** aus den Transaktionsdaten
-- **Tagesaktuelle Wechselkurse** (Standard) – lädt den Kurs für das exakte Transaktionsdatum
-- **Jahresdurchschnitts-Kurse** (Legacy-Modus via `--fx-mode annual`)
+- **Tagesaktuelle Wechselkurse** – lädt den Kurs für das exakte Transaktionsdatum
 - **Validierung** der CSV (fehlende Werte, unbekannte Währungen, Mehrjahres-Check)
 - Wechselkurs-Umrechnung (EUR/USD, EUR/CHF, EUR/EUR)
 - Ausgabe für Anlage KAP-INV (Dividenden) und Anlage KAP (Zinsen)
@@ -48,7 +47,6 @@ uv run steuer-auswertung transactions.csv [OPTIONEN]
 
 | Option | Standard | Beschreibung |
 |--------|----------|--------------|
-| `--fx-mode` | `daily` | Wechselkurs-Modus: `daily` (Tageskurse pro Transaktionsdatum) oder `annual` (Jahresdurchschnitt) |
 | `--dividend-types` | `Dividende` | Transaktionstypen für Dividenden |
 | `--interest-types` | `Zinsen auf Einlagen` | Transaktionstypen für Zinsen |
 | `--purchase-types` | `Kauf` | Transaktionstypen für Wertpapierkäufe |
@@ -64,7 +62,7 @@ uv run steuer-auswertung transactions.csv [OPTIONEN]
 ### Konfiguration per Umgebungsvariable oder Datei
 
 Alle Optionen koennen auch als Umgebungsvariablen mit dem Praefix `SWISSQUOTE_TAX_` gesetzt werden. Aus
-`--fx-mode` wird beispielsweise `SWISSQUOTE_TAX_FX_MODE`. Kommandozeilenargumente haben Vorrang vor
+`--tax-year` wird beispielsweise `SWISSQUOTE_TAX_TAX_YEAR`. Kommandozeilenargumente haben Vorrang vor
 Umgebungsvariablen.
 
 ```bash
@@ -80,7 +78,6 @@ Kommandozeilenargumente die konfigurierten Werte.
 
 ```ini
 # tax-calculator.conf
-fx-mode = annual
 round = true
 ```
 
@@ -130,9 +127,9 @@ Ohne Regeldatei oder ohne passende ISIN-Regel wird kein Betrag aus `Kosten` auto
 aufgenommen. Separate Quellensteuer-Buchungen werden ebenfalls nicht angerechnet, weil der zugehörige
 Bruttobetrag für die Höchstgrenze nicht zuverlässig ermittelt werden kann.
 
-### Wechselkurs-Modi
+### Wechselkurse
 
-#### Tageskurse (`--fx-mode daily`, **Standard**)
+#### Tageskurse
 
 Das Skript lädt für **jede Transaktion** den Wechselkurs des exakten Transaktionsdatums von der frankfurter.dev API.
 
@@ -140,21 +137,11 @@ Das Skript lädt für **jede Transaktion** den Wechselkurs des exakten Transakti
 - Caching: Kurse werden lokal in `~/.cache/swissquote-tax/fx_rates.json` gespeichert (keine doppelten API-Aufrufe)
 - Fallback-Kette: Tageskurs API → Jahresdurchschnitt API → Hinterlegte Standardwerte
 
-#### Jahresdurchschnitt (`--fx-mode annual`, Legacy)
-
-Verhält sich wie die vorherige Version: Ein Kurs pro Währung für das gesamte Steuerjahr.
-
-- Nützlich für Reproduzierbarkeit oder wenn die API nicht verfügbar ist
-
 ### Beispiel
 
 ```bash
 # Tageskurse (Standard) - nutzt Cache automatisch
 uv run steuer-auswertung transactions-from-01012025-to-31122025.csv --no-details
-
-# Jahresdurchschnitt mit manuellen Kursen
-uv run steuer-auswertung transactions-from-01012025-to-31122025.csv \
-  --fx-mode annual --round --output steuer_2025.csv
 
 # Verkauf 2025 mit Anschaffungskosten aus Vorjahren (Tageskursmodus)
 uv run steuer-auswertung transaktionshistorie.csv --tax-year 2025
@@ -219,8 +206,6 @@ Datum       Name          Nettobetrag  Währung  Nettobetrag_EUR
 Datum       Transaktionen     Nettobetrag  Währung  Nettobetrag_EUR
 15.06.2025  Zinsen auf Einlagen  1.50       CHF      1.61
 ```
-
-Im `annual`-Modus wird nur ein Kurs pro Währung ausgegeben.
 
 ### Quellensteuer
 

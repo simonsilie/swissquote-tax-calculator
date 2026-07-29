@@ -22,9 +22,8 @@ def test_daily_fx_rate_fetcher_cache() -> None:
 
         # Test fallback rates for unknown dates (mock daily API to fail)
         with patch.object(fetcher, "_fetch_daily_from_api", return_value=None):
-            with patch.object(fetcher, "fetch_annual_rates", return_value=None):
-                rate = fetcher.get_rate(date(2020, 1, 1), "USD")
-                assert rate == 1.1421  # fallback for 2020
+            rate = fetcher.get_rate(date(2020, 1, 1), "USD")
+            assert rate == 1.1421  # fallback for 2020
 
         # Test cache file was created
         assert cache_file.exists()
@@ -35,33 +34,17 @@ def test_daily_fx_rate_fetcher_cache() -> None:
 
 
 def test_daily_fx_rate_fetcher_fallback_chain() -> None:
-    """Test the fallback chain: daily API -> annual API -> fallback table."""
+    """Test the fallback chain: daily API -> fallback table."""
     from taxes.fx_rates import DailyFXRateFetcher
 
     with tempfile.TemporaryDirectory() as tmpdir:
         cache_file = Path(tmpdir) / "fx_rates.json"
         fetcher = DailyFXRateFetcher(cache_file=cache_file)
 
-        # Mock the daily API to fail, annual API to fail, should use fallback
+        # Mock the daily API to fail, should use fallback
         with patch.object(fetcher, "_fetch_daily_from_api", return_value=None):
-            with patch.object(fetcher, "fetch_annual_rates", return_value=None):
-                rate = fetcher.get_rate(date(2024, 6, 15), "USD")
-                assert rate == 1.0825  # 2024 fallback
-
-
-def test_daily_fx_rate_fetcher_annual_fallback() -> None:
-    """Test that annual API is used when daily API fails."""
-    from taxes.fx_rates import DailyFXRateFetcher
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cache_file = Path(tmpdir) / "fx_rates.json"
-        fetcher = DailyFXRateFetcher(cache_file=cache_file)
-
-        # Mock daily API to fail, annual API to succeed
-        with patch.object(fetcher, "_fetch_daily_from_api", return_value=None):
-            with patch.object(fetcher, "fetch_annual_rates", return_value={"USD": 1.10, "CHF": 0.96, "EUR": 1.0}):
-                rate = fetcher.get_rate(date(2024, 6, 15), "USD")
-                assert rate == 1.10
+            rate = fetcher.get_rate(date(2024, 6, 15), "USD")
+            assert rate == 1.0825  # 2024 fallback
 
 
 def test_daily_fx_rate_fetcher_daily_api_success() -> None:
@@ -119,7 +102,6 @@ if __name__ == "__main__":
     # Allow running the test directly with python
     test_daily_fx_rate_fetcher_cache()
     test_daily_fx_rate_fetcher_fallback_chain()
-    test_daily_fx_rate_fetcher_annual_fallback()
     test_daily_fx_rate_fetcher_daily_api_success()
     test_fetch_daily_from_api_parses_single_date_response()
     test_get_rates_for_date()
