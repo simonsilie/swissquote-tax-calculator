@@ -1,7 +1,11 @@
-# Copy this file to withholding-tax-rules.toml. [[country]] entries provide
-# defaults by the first two ISIN characters; [[security]] entries override them
-# for individual securities. Verify treatment and credit rate against your tax
-# certificate and the applicable double-taxation agreement before filing.
+# Copy this file to withholding-tax-rules.toml.
+#
+# Default rule logic (no configuration required):
+# - ISINs starting with DE are treated as domestic German capital gains tax (max_creditable_rate = 0.0).
+# - All other ISIN prefixes default to foreign withholding tax with max_creditable_rate = 0.15.
+#
+# Use [[country]] entries to override defaults for an entire ISIN prefix (e.g. France or UK),
+# and [[security]] entries to override rules for individual securities (e.g. an ETF).
 #
 # tax_treatment values:
 # - domestic: German capital gains tax; max_creditable_rate must be 0.0.
@@ -11,63 +15,28 @@
 # - share: Ordinary share dividend reported in Anlage KAP.
 # - fund: Investment fund / ETF distribution reported in Anlage KAP-INV.
 
-[[country]]
-isin_prefix = "DE"
-source_country = "DE"
-tax_treatment = "domestic"
-max_creditable_rate = 0.0
-
-# Example foreign ISIN prefix. Uncomment and verify the values before use.
+# German domestic tax default is already built-in:
 # [[country]]
-# isin_prefix = "CH"
-# source_country = "CH"
-# tax_treatment = "foreign"
-# max_creditable_rate = 0.15
+# isin_prefix = "DE"
+# source_country = "DE"
+# tax_treatment = "domestic"
+# max_creditable_rate = 0.0
 
-# [[country]]
-# isin_prefix = "US"
-# source_country = "US"
-# tax_treatment = "foreign"
-# max_creditable_rate = 0.15
-
+# France has a 12.8% DTA withholding tax rate for individuals:
 # [[country]]
 # isin_prefix = "FR"
 # source_country = "FR"
 # tax_treatment = "foreign"
 # max_creditable_rate = 0.128
 
-# [[country]]
-# isin_prefix = "NL"
-# source_country = "NL"
-# tax_treatment = "foreign"
-# max_creditable_rate = 0.15
-
-# [[country]]
-# isin_prefix = "JP"
-# source_country = "JP"
-# tax_treatment = "foreign"
-# max_creditable_rate = 0.15
-
-# [[country]]
-# isin_prefix = "ES"
-# source_country = "ES"
-# tax_treatment = "foreign"
-# max_creditable_rate = 0.15
-
-# [[country]]
-# isin_prefix = "CA"
-# source_country = "CA"
-# tax_treatment = "foreign"
-# max_creditable_rate = 0.15
-
-# UK dividends generally have no withholding tax. Verify special cases before use.
+# UK dividends generally have no withholding tax (0% creditable rate):
 # [[country]]
 # isin_prefix = "GB"
 # source_country = "GB"
 # tax_treatment = "foreign"
 # max_creditable_rate = 0.0
 
-# Use an exact rule for an exception to the country default, for example an ETF.
+# Example rule override for a specific security (e.g., a US-sourced fund under a Swiss ISIN):
 # [[security]]
 # isin = "CH0000000000"
 # source_country = "US"

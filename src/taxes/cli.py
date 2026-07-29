@@ -181,7 +181,7 @@ def main() -> None:
 
     fetcher = DailyFXRateFetcher()
 
-    print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} (Tageskurse) ===")
+    print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} ===")
     df = apply_fx_rates_daily(df, fetcher, args.col_date, args.col_currency, args.col_amount, args.col_eur)
 
     if args.col_withholding_tax in df.columns:
@@ -274,6 +274,8 @@ def main() -> None:
             "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): "
             f"{format_amount(withholding_tax_summary.foreign_creditable, args.round)}"
         )
+        for country, amount in withholding_tax_summary.foreign_creditable_by_country:
+            print(f"   {country}: {format_amount(amount, args.round)}")
         print(
             "   Davon Quellensteuer auf Dividenden: "
             f"{format_amount(dividend_tax_summary.foreign_creditable, args.round)}"
@@ -286,13 +288,19 @@ def main() -> None:
                 "   Nicht anrechenbarer ausländischer Steuerüberhang: "
                 f"{format_amount(withholding_tax_summary.foreign_excess, args.round)}"
             )
+        if withholding_tax_summary.swiss_refundable:
+            print(
+                "   Davon Schweizer Verrechnungssteuer, separat rückforderbar: "
+                f"{format_amount(withholding_tax_summary.swiss_refundable, args.round)} "
+                '(Über eF85 direkt bei der Schweizer ESTV zurückzufordern)'
+            )
         print("4. Anlage KAP (Steueranrechnung):")
         print(
-            "   Zeile 43 - Anrechenbare Kapitalertragsteuer: "
+                "   Zeile 37 - Kapitalertragsteuer: "
             f"{format_amount(withholding_tax_summary.domestic_capital_gains_tax, args.round)}"
         )
         print(
-            "   Zeile 44 - Anrechenbarer Solidaritätszuschlag: "
+                "   Zeile 38 - Solidaritätszuschlag: "
             f"{format_amount(withholding_tax_summary.domestic_solidarity_surcharge, args.round)}"
         )
         print(

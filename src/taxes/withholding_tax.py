@@ -6,6 +6,8 @@ import tomllib
 
 import polars as pl
 
+from typing import overload
+
 CAPITAL_GAINS_TAX_WITH_SOLIDARITY_MULTIPLIER = 1.055
 
 FUND_FORM = "Anlage KAP-INV"
@@ -34,8 +36,27 @@ class SecurityTaxRules(dict[str, SecurityTaxRule]):
         super().__init__(rules or {})
         self.country_rules = country_rules if country_rules is not None else {}
 
-    def get(self, isin: str, default: SecurityTaxRule | None = None) -> SecurityTaxRule | None:
-        return super().get(isin, self.country_rules.get(isin[:2], default))
+    @overload
+    def get(self, key: str, default: None = None, /) -> SecurityTaxRule | None: ...
+
+    @overload
+    def get(self, key: str, default: SecurityTaxRule, /) -> SecurityTaxRule: ...
+
+    @overload
+    def get[T](self, key: str, default: T, /) -> SecurityTaxRule | T: ...
+
+    def get(self, key: str, default: object = None, /) -> object:
+        if not key:
+            return default
+        rule = super().get(key, self.country_rules.get(key[:2]))
+        if rule is not None:
+            return rule
+        prefix = key[:2].upper()
+        if len(prefix) == 2 and prefix.isalpha():
+            if prefix == "DE":
+                return SecurityTaxRule(source_country="DE", tax_treatment="domestic", max_creditable_rate=0.0)
+            return SecurityTaxRule(source_country=prefix, tax_treatment="foreign", max_creditable_rate=0.15)
+        return default
 
 
 @dataclass(frozen=True)
@@ -48,6 +69,8 @@ class WithholdingTaxSummary:
     domestic_capital_gains_tax: float = 0.0
     domestic_solidarity_surcharge: float = 0.0
     unclassified: float = 0.0
+    foreign_creditable_by_country: tuple[tuple[str, float], ...] = ()
+    swiss_refundable: float = 0.0
 
     def __add__(self, other: "WithholdingTaxSummary") -> "WithholdingTaxSummary":
         """Combine summaries from distinct transaction categories."""
@@ -58,6 +81,15 @@ class WithholdingTaxSummary:
             domestic_capital_gains_tax=self.domestic_capital_gains_tax + other.domestic_capital_gains_tax,
             domestic_solidarity_surcharge=self.domestic_solidarity_surcharge + other.domestic_solidarity_surcharge,
             unclassified=self.unclassified + other.unclassified,
+            foreign_creditable_by_country=tuple(
+                sorted(
+                    {
+                        country: amount
+                        for country, amount in self.foreign_creditable_by_country + other.foreign_creditable_by_country
+                    }.items()
+                )
+            ),
+            swiss_refundable=self.swiss_refundable + other.swiss_refundable,
         )
 
 
@@ -172,6 +204,8 @@ def classify_embedded_withholding_taxes(
     domestic_capital_gains_tax_amounts: list[float] = []
     domestic_solidarity_surcharge_amounts: list[float] = []
     unclassified_amounts: list[float] = []
+    country_creditable: dict[str, float] = {}
+    swiss_refundable = 0.0
 
     for row in dataframe.iter_rows(named=True):
         raw_tax = abs(float(row[withholding_tax_eur_col] or 0.0))
@@ -200,6 +234,9 @@ def classify_embedded_withholding_taxes(
             gross_income = abs(float(row[income_eur_col] or 0.0)) + raw_tax
             creditable = min(raw_tax, gross_income * rule.max_creditable_rate)
             excess = raw_tax - creditable
+            country_creditable[rule.source_country] = country_creditable.get(rule.source_country, 0.0) + creditable
+            if rule.source_country == "CH":
+                swiss_refundable += excess
 
         treatments.append(treatment)
         creditable_amounts.append(creditable)
@@ -225,6 +262,8 @@ def classify_embedded_withholding_taxes(
         domestic_capital_gains_tax=sum(domestic_capital_gains_tax_amounts),
         domestic_solidarity_surcharge=sum(domestic_solidarity_surcharge_amounts),
         unclassified=sum(unclassified_amounts),
+        foreign_creditable_by_country=tuple(sorted(country_creditable.items())),
+        swiss_refundable=swiss_refundable,
     )
 
 
@@ -248,6 +287,8 @@ def classify_standalone_withholding_taxes(
     domestic_capital_gains_tax_amounts: list[float] = []
     domestic_solidarity_surcharge_amounts: list[float] = []
     unclassified_amounts: list[float] = []
+    country_creditable: dict[str, float] = {}
+    swiss_refundable = 0.0
     for row in dataframe.iter_rows(named=True):
         raw_tax = abs(float(row[tax_eur_col] or 0.0))
         isin = str(row.get(isin_col) or "").upper()
@@ -268,6 +309,7 @@ def classify_standalone_withholding_taxes(
         elif rule and rule.tax_treatment == "foreign":
             treatment = "foreign_without_gross_income"
             unclassified = raw_tax
+            country_creditable[rule.source_country] = country_creditable.get(rule.source_country, 0.0)
         else:
             treatment = "unclassified"
             unclassified = raw_tax
@@ -292,4 +334,22 @@ def classify_standalone_withholding_taxes(
         domestic_capital_gains_tax=sum(domestic_capital_gains_tax_amounts),
         domestic_solidarity_surcharge=sum(domestic_solidarity_surcharge_amounts),
         unclassified=sum(unclassified_amounts),
+        foreign_creditable_by_country=tuple(sorted(country_creditable.items())),
+        swiss_refundable=swiss_refundable,
     )
+
+
+def calculate_withholding_taxes(
+    dataframe: pl.DataFrame,
+    rules: SecurityTaxRules,
+    isin_col: str,
+    income_eur_col: str,
+    withholding_tax_eur_col: str,
+    transaction_type_col: str | None = None,
+    withholding_tax_types: list[str] | None = None,
+) -> tuple[pl.DataFrame, WithholdingTaxSummary]:
+    """Classify embedded and standalone withholding-tax transactions."""
+    source = dataframe
+    if transaction_type_col and withholding_tax_types:
+        source = source.filter(pl.col(transaction_type_col).is_in(withholding_tax_types))
+    return classify_embedded_withholding_taxes(source, rules, isin_col, income_eur_col, withholding_tax_eur_col)

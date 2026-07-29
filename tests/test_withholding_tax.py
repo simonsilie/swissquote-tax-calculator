@@ -4,7 +4,7 @@ import polars as pl
 import pytest
 
 from taxes.withholding_tax import load_security_tax_rules
-from taxes.withholding_tax import SecurityTaxRule, SecurityTaxRules, classify_embedded_withholding_taxes
+from taxes.withholding_tax import SecurityTaxRule, SecurityTaxRules, calculate_withholding_taxes, classify_embedded_withholding_taxes
 from taxes.withholding_tax import DOMESTIC_SHARE_FORM, FOREIGN_SHARE_FORM, FUND_FORM, tag_dividend_forms
 
 
@@ -93,11 +93,28 @@ max_creditable_rate = 0.15
         load_security_tax_rules(rules_file)
 
 
+def test_default_foreign_rule_resolution() -> None:
+    """Unmapped ISINs default to DE domestic or foreign tax with 15% creditable rate."""
+    rules = SecurityTaxRules()
+
+    de_rule = rules.get("DE0007164600")
+    assert de_rule is not None
+    assert de_rule.source_country == "DE"
+    assert de_rule.tax_treatment == "domestic"
+    assert de_rule.max_creditable_rate == 0.0
+
+    us_rule = rules.get("US0378331005")
+    assert us_rule is not None
+    assert us_rule.source_country == "US"
+    assert us_rule.tax_treatment == "foreign"
+    assert us_rule.max_creditable_rate == 0.15
+
+
 def test_classify_embedded_withholding_taxes_applies_the_credit_limit() -> None:
-    """Foreign tax is capped while domestic and unmapped taxes remain separate."""
+    """Foreign tax is capped while domestic and unmapped non-ISIN values remain separate."""
     dataframe = pl.DataFrame(
         {
-            "ISIN": ["CH0012032048", "DE0007164600", "UNMAPPED"],
+            "ISIN": ["CH0012032048", "DE0007164600", "12345"],
             "Nettobetrag_EUR": [65.0, 73.625, 85.0],
             "Kosten_EUR": [-35.0, -26.375, -15.0],
         }
@@ -189,3 +206,21 @@ def test_tag_dividend_forms_splits_funds_domestic_and_foreign_shares() -> None:
         FOREIGN_SHARE_FORM,
         FOREIGN_SHARE_FORM,
     ]
+
+
+def test_calculate_withholding_taxes_splits_countries_and_german_tax() -> None:
+    dataframe = pl.DataFrame(
+        {
+            "ISIN": ["DE0000000001", "CH0000000001", "US0000000001"],
+            "Brutto_EUR": [100.0, 65.0, 80.0],
+            "Steuer_EUR": [-26.375, -35.0, -20.0],
+        }
+    )
+
+    classified, summary = calculate_withholding_taxes(dataframe, SecurityTaxRules(), "ISIN", "Brutto_EUR", "Steuer_EUR")
+
+    assert classified.height == 3
+    assert summary.domestic_capital_gains_tax == pytest.approx(25.0)
+    assert summary.domestic_solidarity_surcharge == pytest.approx(1.375)
+    assert dict(summary.foreign_creditable_by_country) == {"CH": 15.0, "US": 15.0}
+    assert summary.swiss_refundable == pytest.approx(20.0)

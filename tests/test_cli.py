@@ -40,7 +40,6 @@ def test_basic_functionality_daily_mode() -> None:
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "STEUERJAHR 2024" in result.stdout
-    assert "Tageskurse" in result.stdout
     assert "92.38 EUR" in result.stdout
     assert "Keine Eintragung für Aktienverkäufe" in result.stdout
 
@@ -206,8 +205,8 @@ max_creditable_rate = 0.15
     )
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
-    assert "Zeile 43 - Anrechenbare Kapitalertragsteuer: 0.00 EUR" in result.stdout
-    assert "Zeile 44 - Anrechenbarer Solidaritätszuschlag: 0.00 EUR" in result.stdout
+    assert "Zeile 37 - Kapitalertragsteuer: 0.00 EUR" in result.stdout
+    assert "Zeile 38 - Solidaritätszuschlag: 0.00 EUR" in result.stdout
 
 
 def test_domestic_capital_gains_tax_including_soli_is_reported() -> None:
@@ -229,8 +228,8 @@ max_creditable_rate = 0.0
     )
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
-    assert "Zeile 43 - Anrechenbare Kapitalertragsteuer: 25.00 EUR" in result.stdout
-    assert "Zeile 44 - Anrechenbarer Solidaritätszuschlag: 1.38 EUR" in result.stdout
+    assert "Zeile 37 - Kapitalertragsteuer: 25.00 EUR" in result.stdout
+    assert "Zeile 38 - Solidaritätszuschlag: 1.38 EUR" in result.stdout
     assert "Anrechenbare ausländische Steuern): 0.00 EUR" in result.stdout
 
 

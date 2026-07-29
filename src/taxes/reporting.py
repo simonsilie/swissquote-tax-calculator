@@ -68,9 +68,9 @@ def print_form_summary(
         f" + ausländische Zinsen {format_amount(interest, round_amount)}"
     )
     print(f"  Zeile 41  Anrechenbare ausländische Steuern: {format_amount(foreign_creditable, round_amount)}")
-    print(f"  Zeile 43  Anrechenbare Kapitalertragsteuer: {format_amount(domestic_capital_gains_tax, round_amount)}")
+    print(f"  Zeile 37  Kapitalertragsteuer: {format_amount(domestic_capital_gains_tax, round_amount)}")
     print(
-        f"  Zeile 44  Anrechenbarer Solidaritätszuschlag: {format_amount(domestic_solidarity_surcharge, round_amount)}"
+        f"  Zeile 38  Solidaritätszuschlag: {format_amount(domestic_solidarity_surcharge, round_amount)}"
     )
     if stock_gains or stock_losses:
         print(
