@@ -49,9 +49,6 @@ uv run steuer-auswertung transactions.csv [OPTIONEN]
 | Option | Standard | Beschreibung |
 |--------|----------|--------------|
 | `--fx-mode` | `daily` | Wechselkurs-Modus: `daily` (Tageskurse pro Transaktionsdatum) oder `annual` (Jahresdurchschnitt) |
-| `--fx-usd` | Auto (Fallback) | EUR/USD-Kurs (im `annual`-Modus: Jahresdurchschnitt; im `daily`-Modus: Fallback wenn API fehlschlägt) |
-| `--fx-chf` | Auto (Fallback) | EUR/CHF-Kurs (im `annual`-Modus: Jahresdurchschnitt; im `daily`-Modus: Fallback wenn API fehlschlägt) |
-| `--fx-eur` | 1.0 | EUR/EUR-Kurs (normalerweise 1.0) |
 | `--dividend-types` | `Dividende` | Transaktionstypen für Dividenden |
 | `--interest-types` | `Zinsen auf Einlagen` | Transaktionstypen für Zinsen |
 | `--purchase-types` | `Kauf` | Transaktionstypen für Wertpapierkäufe |
@@ -84,8 +81,6 @@ Kommandozeilenargumente die konfigurierten Werte.
 ```ini
 # tax-calculator.conf
 fx-mode = annual
-fx-usd = 1.08
-fx-chf = 0.95
 round = true
 ```
 
@@ -149,7 +144,6 @@ Das Skript lädt für **jede Transaktion** den Wechselkurs des exakten Transakti
 
 Verhält sich wie die vorherige Version: Ein Kurs pro Währung für das gesamte Steuerjahr.
 
-- Verwendet `--fx-usd`, `--fx-chf`, `--fx-eur` als Überschreibungen
 - Nützlich für Reproduzierbarkeit oder wenn die API nicht verfügbar ist
 
 ### Beispiel
@@ -160,7 +154,7 @@ uv run steuer-auswertung transactions-from-01012025-to-31122025.csv --no-details
 
 # Jahresdurchschnitt mit manuellen Kursen
 uv run steuer-auswertung transactions-from-01012025-to-31122025.csv \
-  --fx-mode annual --fx-usd 1.08 --fx-chf 0.95 --round --output steuer_2025.csv
+  --fx-mode annual --round --output steuer_2025.csv
 
 # Verkauf 2025 mit Anschaffungskosten aus Vorjahren (Tageskursmodus)
 uv run steuer-auswertung transaktionshistorie.csv --tax-year 2025
@@ -266,8 +260,6 @@ Das Skript prüft automatisch:
 | 2022 | 1.0534            | 1.0048            |
 | 2021 | 1.0829            | 1.0811            |
 | 2020 | 1.1421            | 1.0706            |
-
-Kurse über `--fx-usd`, `--fx-chf`, `--fx-eur` überschreiben die automatischen Werte (im `annual`-Modus direkt, im `daily`-Modus als Fallback).
 
 ## Architektur
 

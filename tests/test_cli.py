@@ -1,6 +1,9 @@
 from tests.cli_test_helpers import run_cli
 
 
+OFFLINE = {"SWISSQUOTE_TAX_OFFLINE": "true"}
+
+
 def test_basic_functionality_annual_mode() -> None:
     """Annual mode reports dividend and interest totals."""
     csv_content = """Datum;Auftrag #;Transaktionen;Symbol;Name;ISIN;Anzahl;Stückpreis;Kosten;Aufgelaufene Zinsen;Nettobetrag;Saldo;Währung
@@ -13,25 +16,27 @@ def test_basic_functionality_annual_mode() -> None:
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
     )
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "STEUERJAHR 2025" in result.stdout
     assert "Jahresdurchschnitt" in result.stdout
-    assert "146.96 EUR" in result.stdout
-    assert "1.61 EUR" in result.stdout
+    assert "139.96 EUR" in result.stdout
+    assert "1.64 EUR" in result.stdout
 
 
 def test_basic_functionality_daily_mode() -> None:
-    """Daily mode uses the configured conversion rate."""
+    """Daily mode uses fallback rates when offline."""
     csv_content = """Datum;Auftrag #;Transaktionen;Symbol;Name;ISIN;Anzahl;Stückpreis;Kosten;Aufgelaufene Zinsen;Nettobetrag;Saldo;Währung
 15-06-2024 15:57:09;00000000;Dividende;ETF001;"ETF_NAME_1";IE0000000001;1.0;100.00;0.00;0.00;100.00;100.00;USD
 """
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0825", "--fx-chf", "0.9525", "--fx-eur", "1.0", "--no-details"],
+        ["--no-details"],
+        environment=OFFLINE,
     )
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
@@ -52,15 +57,13 @@ def test_environment_variables_configure_the_cli() -> None:
         ["--no-details"],
         environment={
             "SWISSQUOTE_TAX_FX_MODE": "annual",
-            "SWISSQUOTE_TAX_FX_USD": "1.0",
-            "SWISSQUOTE_TAX_FX_CHF": "1.0",
-            "SWISSQUOTE_TAX_FX_EUR": "1.0",
+            "SWISSQUOTE_TAX_OFFLINE": "true",
         },
     )
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "Jahresdurchschnitt" in result.stdout
-    assert "100.00 EUR" in result.stdout
+    assert "95.24 EUR" in result.stdout
 
 
 def test_multiple_years_require_an_explicit_tax_year() -> None:
@@ -70,7 +73,7 @@ def test_multiple_years_require_an_explicit_tax_year() -> None:
 31-12-2024 15:57:09;00000000;Dividende;ETF001;"ETF_NAME_1";IE0000000001;1.0;43.67;0.00;0.00;43.67;43.97;USD
 """
 
-    result = run_cli(csv_content, ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details"])
+    result = run_cli(csv_content, ["--no-details"], environment=OFFLINE)
 
     assert result.returncode != 0
     assert "Fehler: Transaktionen aus mehreren Jahren gefunden" in result.stderr
@@ -82,27 +85,28 @@ def test_missing_required_column_is_reported() -> None:
 31-12-2025 15:57:09;00000000;Dividende;ETF001;"ETF_NAME_1";IE0000000001;1.0;43.67;0.00;0.00;43.67;43.97
 """
 
-    result = run_cli(csv_content, ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details"])
+    result = run_cli(csv_content, ["--no-details"], environment=OFFLINE)
 
     assert result.returncode != 0
     assert "Fehler: Fehlende Spalten in CSV" in result.stderr
     assert "Währung" in result.stderr
 
 
-def test_annual_fx_mode_uses_configured_rate() -> None:
-    """Annual mode applies a manual EUR/USD rate."""
+def test_annual_fx_mode_uses_fallback_rates() -> None:
+    """Annual mode uses fallback rates when offline."""
     csv_content = """Datum;Auftrag #;Transaktionen;Symbol;Name;ISIN;Anzahl;Stückpreis;Kosten;Aufgelaufene Zinsen;Nettobetrag;Saldo;Währung
 31-12-2025 15:57:09;00000000;Dividende;ETF001;"ETF_NAME_1";IE0000000001;1.0;100.00;0.00;0.00;100.00;100.00;USD
 """
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.10", "--fx-chf", "0.95", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
     )
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "Jahresdurchschnitt" in result.stdout
-    assert "90.91 EUR" in result.stdout
+    assert "95.24 EUR" in result.stdout
 
 
 def test_withholding_tax_is_converted_and_reported() -> None:
@@ -113,7 +117,8 @@ def test_withholding_tax_is_converted_and_reported() -> None:
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
         withholding_tax_rules="""[[security]]
 isin = "US0000000001"
 source_country = "US"
@@ -123,8 +128,8 @@ max_creditable_rate = 0.15
     )
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
-    assert "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 15.00 EUR" in result.stdout
-    assert "Davon Quellensteuer auf Dividenden: 15.00 EUR" in result.stdout
+    assert "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 14.29 EUR" in result.stdout
+    assert "Davon Quellensteuer auf Dividenden: 14.29 EUR" in result.stdout
 
 
 def test_dividend_income_is_reported_gross_of_withholding_tax() -> None:
@@ -135,7 +140,8 @@ def test_dividend_income_is_reported_gross_of_withholding_tax() -> None:
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
         withholding_tax_rules="""[[security]]
 isin = "US0000000001"
 source_country = "US"
@@ -145,7 +151,7 @@ max_creditable_rate = 0.15
     )
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
-    assert "Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): 100.00 EUR" in result.stdout
+    assert "Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): 95.24 EUR" in result.stdout
 
 
 def test_domestic_dividend_income_is_reported_gross_of_german_tax() -> None:
@@ -156,7 +162,8 @@ def test_domestic_dividend_income_is_reported_gross_of_german_tax() -> None:
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
         withholding_tax_rules="""[[security]]
 isin = "DE0007164600"
 source_country = "DE"
@@ -177,7 +184,8 @@ def test_fund_distribution_is_reported_in_anlage_kap_inv() -> None:
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
         withholding_tax_rules="""[[security]]
 isin = "IE00B3RBWM25"
 source_country = "IE"
@@ -201,7 +209,8 @@ def test_summary_combines_foreign_dividends_and_interest_in_line_19() -> None:
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
         withholding_tax_rules="""[[security]]
 isin = "CH0038863350"
 source_country = "CH"
@@ -224,7 +233,8 @@ def test_domestic_tax_position_is_reported_even_when_empty() -> None:
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
         withholding_tax_rules="""[[security]]
 isin = "US0000000001"
 source_country = "US"
@@ -246,7 +256,8 @@ def test_domestic_capital_gains_tax_including_soli_is_reported() -> None:
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
         withholding_tax_rules="""[[security]]
 isin = "DE0007164600"
 source_country = "DE"
@@ -270,7 +281,8 @@ def test_separate_withholding_tax_transaction_is_reported() -> None:
 
     result = run_cli(
         csv_content,
-        ["--fx-usd", "1.0", "--fx-chf", "1.0", "--fx-eur", "1.0", "--no-details", "--fx-mode", "annual"],
+        ["--no-details", "--fx-mode", "annual"],
+        environment=OFFLINE,
         withholding_tax_rules="""[[security]]
 isin = "US0000000001"
 source_country = "US"
@@ -281,4 +293,4 @@ max_creditable_rate = 0.15
 
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 0.00 EUR" in result.stdout
-    assert "Nicht in Zeile 41 (fehlende ISIN-Regel oder Bruttobetrag): 15.00 EUR" in result.stdout
+    assert "Nicht in Zeile 41 (fehlende ISIN-Regel oder Bruttobetrag): 14.29 EUR" in result.stdout

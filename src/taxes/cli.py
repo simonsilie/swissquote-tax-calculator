@@ -66,25 +66,6 @@ def parse_args() -> Namespace:
     parser.add_argument("--encoding", default="latin1", help="CSV-Encoding")
     parser.add_argument("--sep", default=";", help="CSV-Trennzeichen")
     parser.add_argument("--tax-year", type=int, help="Steuerjahr bei CSV-Dateien mit Transaktionshistorie")
-    help_text_usd = (
-        "EUR/USD Kurs (im annual-Modus: Jahresdurchschnitt, im daily-Modus: Überschreibt automatische Kurse)"
-    )
-    parser.add_argument(
-        "--fx-usd",
-        type=float,
-        default=None,
-        help=help_text_usd,
-    )
-    help_text_chf = (
-        "EUR/CHF Kurs (im annual-Modus: Jahresdurchschnitt, im daily-Modus: Überschreibt automatische Kurse)"
-    )
-    parser.add_argument(
-        "--fx-chf",
-        type=float,
-        default=None,
-        help=help_text_chf,
-    )
-    parser.add_argument("--fx-eur", type=float, default=None, help="EUR/EUR Kurs (standardmäßig 1.0)")
     parser.add_argument(
         "--fx-mode",
         choices=["daily", "annual"],
@@ -204,15 +185,7 @@ def main() -> None:
     tax_year: int = detect_tax_year(df, args.col_date, args.tax_year)
     validate_data(df, args.col_amount, args.col_currency, args.col_type)
 
-    rate_overrides: dict[str, float] = {}
-    if args.fx_usd is not None:
-        rate_overrides["USD"] = args.fx_usd
-    if args.fx_chf is not None:
-        rate_overrides["CHF"] = args.fx_chf
-    if args.fx_eur is not None:
-        rate_overrides["EUR"] = args.fx_eur
-
-    fetcher = DailyFXRateFetcher(rate_overrides=rate_overrides)
+    fetcher = DailyFXRateFetcher()
 
     if args.fx_mode == "daily":
         print(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} (Tageskurse) ===")
@@ -228,9 +201,6 @@ def main() -> None:
             args.col_currency,
             args.col_amount,
             args.col_eur,
-            args.fx_usd,
-            args.fx_chf,
-            args.fx_eur,
         )
 
     if args.col_withholding_tax in df.columns:
@@ -251,9 +221,6 @@ def main() -> None:
                 args.col_currency,
                 args.col_withholding_tax,
                 args.col_withholding_tax_eur,
-                args.fx_usd,
-                args.fx_chf,
-                args.fx_eur,
             )
 
     if args.col_withholding_tax_eur in df.columns:

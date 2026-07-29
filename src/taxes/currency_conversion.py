@@ -1,5 +1,3 @@
-from typing import Optional
-
 import polars as pl
 
 from taxes.fx_rates import DailyFXRateFetcher
@@ -35,24 +33,12 @@ def apply_fx_rates_annual(
     currency_col: str,
     amount_col: str,
     eur_col: str,
-    cli_usd: Optional[float],
-    cli_chf: Optional[float],
-    cli_eur: Optional[float],
 ) -> pl.DataFrame:
     """Apply annual-average exchange rates to convert amounts to EUR."""
-    if cli_usd is not None and cli_chf is not None and cli_eur is not None:
-        annual_rates = {"USD": cli_usd, "CHF": cli_chf, "EUR": cli_eur}
-    else:
-        annual_rates = fetcher.fetch_annual_rates(tax_year)
-        if annual_rates is None:
-            annual_rates = fetcher.get_fallback_rates(tax_year)
 
-        if cli_usd is not None:
-            annual_rates["USD"] = cli_usd
-        if cli_chf is not None:
-            annual_rates["CHF"] = cli_chf
-        if cli_eur is not None:
-            annual_rates["EUR"] = cli_eur
+    annual_rates = fetcher.fetch_annual_rates(tax_year)
+    if annual_rates is None:
+        annual_rates = fetcher.get_fallback_rates(tax_year)
 
     print(
         f"  Wechselkurse (Jahresdurchschnitt {tax_year}): "

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import statistics
 import urllib.request
 from datetime import date
@@ -26,14 +27,13 @@ class DailyFXRateFetcher:
     """Fetches daily EUR exchange rates with caching and multi-tier fallback.
 
     Fallback chain: cached rate → Frankfurter daily API → Frankfurter annual API
-    → hardcoded EZB approximate rates. Supports user-provided rate overrides that
-    skip the API chain entirely.
+    → hardcoded EZB approximate rates.
     """
 
-    def __init__(self, cache_file: Optional[Path] = None, rate_overrides: Optional[dict[str, float]] = None) -> None:
+    def __init__(self, cache_file: Optional[Path] = None) -> None:
         self.cache_file = cache_file or CACHE_FILE
-        self._rate_overrides: dict[str, float] = rate_overrides or {}
         self._cache: dict[str, dict[str, float]] = {}
+        self._offline = os.environ.get("SWISSQUOTE_TAX_OFFLINE", "").lower() in ("1", "true", "yes")
         self._load_cache()
 
     def _load_cache(self) -> None:
@@ -82,6 +82,8 @@ class DailyFXRateFetcher:
         return result
 
     def fetch_annual_rates(self, year: int) -> Optional[dict[str, float]]:
+        if self._offline:
+            return None
         currency_param = ",".join([c for c in DEFAULT_CURRENCIES if c != "EUR"])
         url = f"https://api.frankfurter.dev/v1/{year}-01-01..{year}-12-31?from=EUR&to={currency_param}"
         try:
@@ -114,8 +116,8 @@ class DailyFXRateFetcher:
         if currency == "EUR":
             return 1.0
 
-        if currency in self._rate_overrides:
-            return self._rate_overrides[currency]
+        if self._offline:
+            return self.get_fallback_rates(target_date.year).get(currency, 1.0)
 
         date_str = target_date.isoformat()
         year = target_date.year
