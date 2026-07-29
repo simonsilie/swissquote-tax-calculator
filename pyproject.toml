@@ -6,8 +6,10 @@ requires-python = ">=3.14"
 dependencies = [
     "configargparse>=1.7",
     "loguru>=0.7.0",
+    "markdown>=3.7",
     "polars>=1.16.0",
     "pyarrow>=25.0.0",
+    "weasyprint>=63.0",
 ]
 
 [build-system]
@@ -22,11 +24,7 @@ dev = [
     "pyrefly>=1.1.1",
     "pytest>=9.1.1",
     "ruff>=0.1.0",
-]
-
-pdf = [
-    "markdown>=3.7",
-    "weasyprint>=63.0",
+    "types-Markdown>=3.7.0.20240316",
 ]
 
 [tool.ruff]

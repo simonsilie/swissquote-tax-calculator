@@ -420,8 +420,10 @@ source = { editable = "." }
 dependencies = [
     { name = "configargparse" },
     { name = "loguru" },
+    { name = "markdown" },
     { name = "polars" },
     { name = "pyarrow" },
+    { name = "weasyprint" },
 ]
 
 [package.dev-dependencies]
@@ -429,18 +431,17 @@ dev = [
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "ruff" },
-]
-pdf = [
-    { name = "markdown" },
-    { name = "weasyprint" },
+    { name = "types-markdown" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "configargparse", specifier = ">=1.7" },
     { name = "loguru", specifier = ">=0.7.0" },
+    { name = "markdown", specifier = ">=3.7" },
     { name = "polars", specifier = ">=1.16.0" },
     { name = "pyarrow", specifier = ">=25.0.0" },
+    { name = "weasyprint", specifier = ">=63.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -448,10 +449,7 @@ dev = [
     { name = "pyrefly", specifier = ">=1.1.1" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.1.0" },
-]
-pdf = [
-    { name = "markdown", specifier = ">=3.7" },
-    { name = "weasyprint", specifier = ">=63.0" },
+    { name = "types-markdown", specifier = ">=3.7.0.20240316" },
 ]
 
 [[package]]
@@ -476,6 +474,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/1f/cfe2f6b30557c92b3f31d41707e09cef5c1efbd87392bc6c0430c46b0e4d/tinyhtml5-2.1.0.tar.gz", hash = "sha256:60a50ec3d938a37e491efa01af895853060943dcebb5627de5b10d188b338a67", size = 179242, upload-time = "2026-03-05T17:06:30.704Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/48/01695a036b695f83fea7aef6955d735db0f517b1c8e25ddb399ac0bdbcbf/tinyhtml5-2.1.0-py3-none-any.whl", hash = "sha256:6e11cfff38515834268daf89d5f85bbde0b6dd02e8d9e212d1385c2289b89f0a", size = 39686, upload-time = "2026-03-05T17:06:28.498Z" },
+]
+
+[[package]]
+name = "types-markdown"
+version = "3.10.2.20260712"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/eb/9520ed01687401b47265594955c0a9202a4f547795176de61bff77c8dfda/types_markdown-3.10.2.20260712.tar.gz", hash = "sha256:25aea17282490f35ab6b17a87771abd2f479185aaff8e8f4a0035043f02f2c52", size = 20185, upload-time = "2026-07-12T05:13:53.537Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9f/ea/a8dc2c8977870d27b8b44c4ba2952d765f9d39626e42d0083c871c1c1ebf/types_markdown-3.10.2.20260712-py3-none-any.whl", hash = "sha256:a551ddedde46e0eaca7059aa3d0e42db71afe2b53d8b58f72f2de63f3284f625", size = 25842, upload-time = "2026-07-12T05:13:52.702Z" },
 ]
 
 [[package]]

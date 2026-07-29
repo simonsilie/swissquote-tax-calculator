@@ -1,7 +1,9 @@
 import shutil
 from pathlib import Path
 
+import markdown
 import polars as pl
+import weasyprint
 from loguru import logger
 
 from taxes.withholding_tax import TEILFREISTELLUNG_RATES, WithholdingTaxSummary
@@ -125,16 +127,16 @@ def _generate_markdown(
     if stock_gains != 0 or stock_losses != 0:
         lines.extend(
             [
-                "### Aktienveräußerungen",
+                "### Zeile 20 / 23 — Aktienveräußerungen",
                 "",
                 "In den Kapitalerträgen ohne inländischen Steuerabzug, Aktien-Unterzeilen laut Formular:",
                 "",
             ]
         )
         if stock_gains > 0:
-            lines.append(f"> **Aktiengewinne: `{_fmt(stock_gains, round_amount)}`**")
+            lines.append(f"> **Aktiengewinne (Zeile 20): `{_fmt(stock_gains, round_amount)}`**")
         if stock_losses < 0:
-            lines.append(f"> **Aktienverluste: `{_fmt(stock_losses, round_amount)}`**")
+            lines.append(f"> **Aktienverluste (Zeile 23): `{_fmt(stock_losses, round_amount)}`**")
         lines.append("")
 
     lines.extend(
@@ -226,8 +228,8 @@ def _generate_markdown(
             f"| Anlage KAP | 37 | Kapitalertragsteuer | {_fmt(withholding_tax_summary.domestic_capital_gains_tax, round_amount)} |",
             f"| Anlage KAP | 38 | Solidaritätszuschlag | {_fmt(withholding_tax_summary.domestic_solidarity_surcharge, round_amount)} |",
             f"| Anlage KAP | 41 | Anrechenbare ausl. Quellensteuer | {_fmt(withholding_tax_summary.foreign_creditable, round_amount)} |",
-            f"| Anlage KAP | — | Aktiengewinne | {_fmt(stock_gains, round_amount)} |",
-            f"| Anlage KAP | — | Aktienverluste | {_fmt(stock_losses, round_amount)} |",
+            f"| Anlage KAP | 20 | Aktiengewinne | {_fmt(stock_gains, round_amount)} |",
+            f"| Anlage KAP | 23 | Aktienverluste | {_fmt(stock_losses, round_amount)} |",
             f"| Anlage KAP-INV | 4 | Investmentfonds-Ausschüttungen | {_fmt(total_fund_dividends, round_amount)} |",
         ]
     )
@@ -255,12 +257,6 @@ def _generate_markdown(
 
 
 def _generate_pdf(md_path: Path) -> Path | None:
-    try:
-        import weasyprint  # pyrefly: ignore[missing-import]
-    except ImportError:
-        logger.info("weasyprint not installed — skipping PDF generation")
-        return None
-
     html_content = _md_to_html(md_path.read_text(encoding="utf-8"))
     pdf_path = md_path.with_suffix(".pdf")
     try:
@@ -273,11 +269,6 @@ def _generate_pdf(md_path: Path) -> Path | None:
 
 
 def _md_to_html(markdown_text: str) -> str:
-    try:
-        import markdown  # pyrefly: ignore[missing-import]
-    except ImportError:
-        return f"<pre>{_escape_html(markdown_text)}</pre>"
-
     md = markdown.Markdown(extensions=["tables"])
     body = md.convert(markdown_text)
     return f"""<!DOCTYPE html>

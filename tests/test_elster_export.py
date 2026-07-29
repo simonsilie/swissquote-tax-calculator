@@ -45,6 +45,8 @@ def test_export_elster_mapping_uses_utf8_characters(tmp_path: Path) -> None:
     assert "übertragen" in content or "Übertragen" in content
     assert "Kapitalerträge" in content
     assert "Ausschüttungen" in content
+    assert "| Anlage KAP | 20 | Aktiengewinne |" in content
+    assert "| Anlage KAP | 23 | Aktienverluste |" in content
 
     # Verify no HTML entities remain
     assert "&mdash;" not in content
