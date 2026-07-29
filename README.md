@@ -207,25 +207,3 @@ Das Skript prüft automatisch:
 | 2022 | 1.0534            | 1.0048            |
 | 2021 | 1.1829            | 1.0811            |
 | 2020 | 1.1421            | 1.0706            |
-
-## Architektur
-
-```text
-src/taxes/
-├── cli.py                 # CLI und Ablaufsteuerung
-├── transactions.py        # CSV-Import, Jahresauswahl und Validierung
-├── currency_conversion.py # Umrechnung mit Tageskursen
-├── stock_sales.py         # FIFO-Berechnung für Aktienverkäufe
-├── reporting.py           # Konsolenausgabe und CSV-Export
-├── fx_rates.py            # DailyFXRateFetcher (Tageskurse, Cache, Fallback)
-├── withholding_tax.py     # ISIN-basierte Quellensteuer-Klassifikation
-└── __init__.py
-
-tests/
-├── test_fx_rates.py       # Unit-Tests für fx_rates Modul
-├── test_cli.py            # Integrationstests für die CLI
-├── test_stock_sales.py    # Integrationstests für Aktienverkäufe
-└── test_withholding_tax.py # Integrationstests für Quellensteuerklassifikation
-```
-
-Die Fachlogik ist nach Verantwortung getrennt: `transactions` verarbeitet Swissquote-Exporte, `currency_conversion` bewertet Beträge in EUR, `stock_sales` ermittelt FIFO-Gewinne, `withholding_tax` klassifiziert Quellensteuern nach ISIN-Regeln und `reporting` erzeugt die Auswertung. `fx_rates` kapselt weiterhin API-Abruf, Caching und Fallback-Kette und kann unabhängig vom Haupt-Skript getestet werden.
