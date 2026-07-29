@@ -46,9 +46,10 @@ uv run steuer-auswertung transactions.csv [OPTIONEN]
 ### Wichtige Optionen
 
 | Option | Standard | Beschreibung |
-|--------|----------|--------------|
+| -------- | ---------- | -------------- |
 | `--dividend-types` | `Dividende` | Transaktionstypen für Dividenden |
 | `--interest-types` | `Zinsen auf Einlagen` | Transaktionstypen für Zinsen |
+| `--withholding-tax-types` | `Steuerrückbehalt Quellensteuer Withholding Tax` | Transaktionstypen für separate Quellensteuer-Buchungen |
 | `--purchase-types` | `Kauf` | Transaktionstypen für Wertpapierkäufe |
 | `--sale-types` | `Verkauf` | Transaktionstypen für Wertpapierverkäufe |
 | `--tax-year` | Auto | Steuerjahr bei einer CSV mit Käufen aus Vorjahren |
@@ -106,8 +107,8 @@ enthalten den Quellenstaat, die Abzugsart und den maximal anrechenbaren Anteil d
 `domestic` setzt den Höchstbetrag immer auf `0.0`; `foreign` begrenzt die Anrechnung auf
 `Bruttodividende × max_creditable_rate`. Übersteigende ausländische Steuer sowie nicht klassifizierte
 Beträge werden separat ausgegeben. Als `domestic` klassifizierte Abzüge werden separat als
-anrechenbare deutsche Kapitalertragsteuer (Anlage KAP 2025, Zeile 43) und anrechenbarer
-Solidaritätszuschlag (Zeile 44) ausgewiesen; sie gehören nicht in Zeile 41. Die Aufteilung erfolgt
+anrechenbare deutsche Kapitalertragsteuer (Anlage KAP 2025, Zeile 37) und anrechenbarer
+Solidaritätszuschlag (Zeile 38) ausgewiesen; sie gehören nicht in Zeile 41. Die Aufteilung erfolgt
 im Verhältnis von Kapitalertragsteuer und Soli und setzt voraus, dass der Abzug keine Kirchensteuer
 enthält. Die Regelwerte müssen gegen Steuerbescheinigung und aktuelles DBA geprüft werden.
 Das ISIN-Präfix ist nur ein sinnvoller Standardwert: Bei ETFs, international vergebenen ISINs wie `XS...`
@@ -124,8 +125,9 @@ bzw. ISIN-Präfix `DE`) erscheinen als inländische Kapitalerträge in **Anlage 
 sich auf die Anlage KAP 2025 und sind vor Abgabe am ELSTER-Formular des Steuerjahres zu prüfen.
 
 Ohne Regeldatei oder ohne passende ISIN-Regel wird kein Betrag aus `Kosten` automatisch in Zeile 41
-aufgenommen. Separate Quellensteuer-Buchungen werden ebenfalls nicht angerechnet, weil der zugehörige
-Bruttobetrag für die Höchstgrenze nicht zuverlässig ermittelt werden kann.
+aufgenommen. Separate Quellensteuer-Buchungen (Steuerrückbehalt, Quellensteuer, Withholding Tax)
+werden ebenfalls klassifiziert: Inländische Abzüge werden als Kapitalertragsteuer/Soli ausgewiesen,
+ausländische Abzüge ohne zugehörigen Bruttobetrag erscheinen als nicht klassifiziert.
 
 ### Wechselkurse
 
@@ -167,46 +169,6 @@ Bei einer Swissquote-Transaktion ohne deutschen Kapitalertragsteuerabzug gehöre
 
 Für das Steuerjahr 2025 entsprechen die Formularfelder der Anlage KAP üblicherweise: Zeile 7 für Kapitalerträge ohne inländischen Steuerabzug, Zeile 8 für darin enthaltene Aktienveräußerungsgewinne und Zeile 12 für darin enthaltene Aktienveräußerungsverluste. Zeilennummern und Feldbezeichnungen können sich ändern; vor Abgabe ist das Formular des jeweiligen Steuerjahrs in ELSTER zu prüfen.
 
-## Ausgabe
-
-```text
-=== AUSWERTUNG FÜR STEUERJAHR 2025 (Tageskurse) ===
-  Wechselkurse (Tageskurs 2025-03-01): EUR/USD=1.0823, EUR/CHF=0.9534
-  Wechselkurse (Tageskurs 2025-06-15): EUR/USD=1.0751, EUR/CHF=0.9498
-1. Dividenden (Bruttoerträge vor Quellensteuer):
-   Anlage KAP (Zeile 18 - Inländische Kapitalerträge, deutsche Aktien): 28 EUR
-   Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): 214 EUR
-   Anlage KAP-INV (Zeile 4 - Investmentfonds-/ETF-Ausschüttungen): 175 EUR
-2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   2 EUR
-3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 23 EUR
-   Davon Quellensteuer auf Dividenden: 22 EUR
-   Davon Quellensteuer auf Zinsen: 1 EUR
-4. Realisierte Gewinne/Verluste aus Aktienverkäufen: 250 EUR
-  Anlage KAP: In Kapitalerträgen ohne inländischen Steuerabzug berücksichtigen.
-  Davon Aktiengewinne (separates Formularfeld): 250 EUR
-
-=== ZUSAMMENFASSUNG: WELCHER BETRAG IN WELCHE ZEILE (Anlage KAP 2025) ===
-Anlage KAP
-  Zeile 18  Inländische Kapitalerträge (deutsche Aktien): 28 EUR
-  Zeile 19  Ausländische Kapitalerträge: 216 EUR
-            = ausländische Dividenden 214 EUR + ausländische Zinsen 2 EUR
-  Zeile 41  Anrechenbare ausländische Steuern: 23 EUR
-  Zeile 43  Anrechenbare Kapitalertragsteuer: 7 EUR
-  Zeile 44  Anrechenbarer Solidaritätszuschlag: 0 EUR
-Anlage KAP-INV
-  Zeile 4   Investmentfonds-/ETF-Ausschüttungen: 175 EUR
-Zeilennummern beziehen sich auf die Anlage KAP 2025 – vor Abgabe am ELSTER-Formular prüfen.
-
---- Details Dividenden ---
-Datum       Name          Nettobetrag  Währung  Nettobetrag_EUR
-01.03.2025  ETF XYZ       150.00       USD      138.89
-...
-
---- Details Zinsen ---
-Datum       Transaktionen     Nettobetrag  Währung  Nettobetrag_EUR
-15.06.2025  Zinsen auf Einlagen  1.50       CHF      1.61
-```
-
 ### Quellensteuer
 
 Im Swissquote-Standardexport wird die einbehaltene Quellensteuer in der Spalte `Kosten` geführt; diese verwendet das Skript standardmäßig. Der Betrag wird mit demselben Tages- oder Jahreskurs wie der zugehörige Ertrag in EUR umgerechnet. Negative Abzüge im CSV-Export werden als positiver Betrag ausgewiesen. Die Anrechnung in Anlage KAP Zeile 41 erfolgt jedoch nur mit einer passenden ISIN-Regel aus `--withholding-tax-rules`.
@@ -218,7 +180,7 @@ Die ausgewiesenen Dividenden- und Zinserträge sind **Bruttobeträge** vor Quell
 Bei einem abweichenden CSV-Export mit einer eigenen Spalte `Quellensteuer` wird diese beim Aufruf angegeben:
 
 ```bash
-uv run steuer-auswertung --fx-mode daily \
+uv run steuer-auswertung \
   --col-withholding-tax Quellensteuer \
   transactions.csv
 ```
@@ -243,7 +205,7 @@ Das Skript prüft automatisch:
 | 2024 | 1.0825            | 0.9525            |
 | 2023 | 1.0812            | 0.9718            |
 | 2022 | 1.0534            | 1.0048            |
-| 2021 | 1.0829            | 1.0811            |
+| 2021 | 1.1829            | 1.0811            |
 | 2020 | 1.1421            | 1.0706            |
 
 ## Architektur
@@ -252,16 +214,18 @@ Das Skript prüft automatisch:
 src/taxes/
 ├── cli.py                 # CLI und Ablaufsteuerung
 ├── transactions.py        # CSV-Import, Jahresauswahl und Validierung
-├── currency_conversion.py # Umrechnung mit Tages- oder Jahreskursen
+├── currency_conversion.py # Umrechnung mit Tageskursen
 ├── stock_sales.py         # FIFO-Berechnung für Aktienverkäufe
 ├── reporting.py           # Konsolenausgabe und CSV-Export
 ├── fx_rates.py            # DailyFXRateFetcher (Tageskurse, Cache, Fallback)
+├── withholding_tax.py     # ISIN-basierte Quellensteuer-Klassifikation
 └── __init__.py
 
 tests/
 ├── test_fx_rates.py       # Unit-Tests für fx_rates Modul
 ├── test_cli.py            # Integrationstests für die CLI
-└── test_stock_sales.py    # Integrationstests für Aktienverkäufe
+├── test_stock_sales.py    # Integrationstests für Aktienverkäufe
+└── test_withholding_tax.py # Integrationstests für Quellensteuerklassifikation
 ```
 
-Die Fachlogik ist nach Verantwortung getrennt: `transactions` verarbeitet Swissquote-Exporte, `currency_conversion` bewertet Beträge in EUR, `stock_sales` ermittelt FIFO-Gewinne und `reporting` erzeugt die Auswertung. `fx_rates` kapselt weiterhin API-Abruf, Caching und Fallback-Kette und kann unabhängig vom Haupt-Skript getestet werden.
+Die Fachlogik ist nach Verantwortung getrennt: `transactions` verarbeitet Swissquote-Exporte, `currency_conversion` bewertet Beträge in EUR, `stock_sales` ermittelt FIFO-Gewinne, `withholding_tax` klassifiziert Quellensteuern nach ISIN-Regeln und `reporting` erzeugt die Auswertung. `fx_rates` kapselt weiterhin API-Abruf, Caching und Fallback-Kette und kann unabhängig vom Haupt-Skript getestet werden.
