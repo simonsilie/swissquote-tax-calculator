@@ -380,19 +380,3 @@ def classify_standalone_withholding_taxes(
         foreign_creditable_by_country=tuple(sorted(country_creditable.items())),
         swiss_refundable=swiss_refundable,
     )
-
-
-def calculate_withholding_taxes(
-    dataframe: pl.DataFrame,
-    rules: SecurityTaxRules,
-    isin_col: str,
-    income_eur_col: str,
-    withholding_tax_eur_col: str,
-    transaction_type_col: str | None = None,
-    withholding_tax_types: list[str] | None = None,
-) -> tuple[pl.DataFrame, WithholdingTaxSummary]:
-    """Classify embedded and standalone withholding-tax transactions."""
-    source = dataframe
-    if transaction_type_col and withholding_tax_types:
-        source = source.filter(pl.col(transaction_type_col).is_in(withholding_tax_types))
-    return classify_embedded_withholding_taxes(source, rules, isin_col, income_eur_col, withholding_tax_eur_col)
