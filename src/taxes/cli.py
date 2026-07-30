@@ -172,7 +172,7 @@ def main() -> None:
         return
 
     if args.csv_file is None:
-        sys.exit("Fehler: csv_file ist erforderlich (z.B. steuer-auswertung transaktionen.csv)")
+        sys.exit("Fehler: csv_file ist erforderlich (z.B. swissquote-tax-calculator transaktionen.csv)")
 
     withholding_tax_rules_path = args.withholding_tax_rules
     if withholding_tax_rules_path is None and DEFAULT_WITHHOLDING_TAX_RULES_FILE.is_file():

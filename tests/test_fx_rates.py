@@ -96,13 +96,3 @@ def test_get_rates_for_date() -> None:
             assert rates["USD"] == 1.09
             assert rates["CHF"] == 0.94
             assert rates["EUR"] == 1.0
-
-
-if __name__ == "__main__":
-    # Allow running the test directly with python
-    test_daily_fx_rate_fetcher_cache()
-    test_daily_fx_rate_fetcher_fallback_chain()
-    test_daily_fx_rate_fetcher_daily_api_success()
-    test_fetch_daily_from_api_parses_single_date_response()
-    test_get_rates_for_date()
-    print("All tests passed!")

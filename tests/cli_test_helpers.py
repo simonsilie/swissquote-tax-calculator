@@ -28,7 +28,7 @@ def run_cli(
         environment_variables = os.environ.copy()
         if environment:
             environment_variables.update(environment)
-        command_arguments = ["uv", "run", "steuer-auswertung", csv_file_path, *arguments]
+        command_arguments = ["uv", "run", "swissquote-tax-calculator", csv_file_path, *arguments]
         if tax_rules_path:
             command_arguments.extend(["--withholding-tax-rules", tax_rules_path])
         return subprocess.run(

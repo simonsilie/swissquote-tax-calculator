@@ -42,7 +42,7 @@ uv sync
 ## Nutzung
 
 ```bash
-uv run steuer-auswertung transactions.csv [OPTIONEN]
+uv run  transactions.csv [OPTIONEN]
 ```
 
 ### Pflichtargument
@@ -77,7 +77,7 @@ Umgebungsvariablen.
 cp template.env .env
 # .env fuer diesen Shell-Prozess laden
 source .env
-uv run steuer-auswertung transactions.csv --no-details
+uv run swissquote-tax-calculator transactions.csv --no-details
 ```
 
 Alternativ liest `--config` eine Datei mit Optionen im Format `option = wert`. Auch hier ueberschreiben
@@ -89,7 +89,7 @@ round = true
 ```
 
 ```bash
-uv run steuer-auswertung transactions.csv --config tax-calculator.conf
+uv run swissquote-tax-calculator transactions.csv --config tax-calculator.conf
 ```
 
 ### Quellensteuer-Regeln nach ISIN
@@ -101,7 +101,7 @@ Quellensteuer in Anlage KAP Zeile 41 erscheint, wird sie in einer lokalen TOML-D
 ```bash
 cp withholding-tax-rules.template.toml withholding-tax-rules.toml
 # withholding-tax-rules.toml für die eigenen ISIN-Präfixe und Ausnahmen ergänzen
-uv run steuer-auswertung transactions.csv
+uv run swissquote-tax-calculator transactions.csv
 ```
 
 Eine `withholding-tax-rules.toml` im aktuellen Arbeitsverzeichnis wird automatisch geladen. Mit
@@ -149,10 +149,10 @@ Das Skript lädt für **jede Transaktion** den Wechselkurs des exakten Transakti
 
 ```bash
 # Tageskurse - nutzt Cache automatisch
-uv run steuer-auswertung transactions-from-01012025-to-31122025.csv --no-details
+uv run swissquote-tax-calculator transactions-from-01012025-to-31122025.csv --no-details
 
 # Verkauf 2025 mit Anschaffungskosten aus Vorjahren
-uv run steuer-auswertung transaktionshistorie.csv --tax-year 2025
+uv run swissquote-tax-calculator transaktionshistorie.csv --tax-year 2025
 ```
 
 ### Aktienverkäufe
@@ -186,7 +186,7 @@ Die ausgewiesenen Dividenden- und Zinserträge sind **Bruttobeträge** vor Quell
 Bei einem abweichenden CSV-Export mit einer eigenen Spalte `Quellensteuer` wird diese beim Aufruf angegeben:
 
 ```bash
-uv run steuer-auswertung \
+uv run swissquote-tax-calculator \
   --col-withholding-tax Quellensteuer \
   transactions.csv
 ```

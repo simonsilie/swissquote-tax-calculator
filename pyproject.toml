@@ -21,7 +21,7 @@ module-name = "taxes"
 module-root = "src"
 
 [project.scripts]
-steuer-auswertung = "taxes.cli:main"
+swissquote-tax-calculator = "taxes.cli:main"
 
 [dependency-groups]
 dev = [
