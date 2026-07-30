@@ -42,7 +42,7 @@ uv sync
 ## Nutzung
 
 ```bash
-uv run  transactions.csv [OPTIONEN]
+uv run swissquote-tax-calculator transactions.csv [OPTIONEN]
 ```
 
 ### Pflichtargument
@@ -143,7 +143,7 @@ Das Skript lädt für **jede Transaktion** den Wechselkurs des exakten Transakti
 
 - Vorteil: Korrekte steuerliche Bewertung pro Transaktion
 - Caching: Kurse werden lokal in `~/.cache/swissquote-tax/fx_rates.json` gespeichert (keine doppelten API-Aufrufe)
-- Fallback-Kette: Tageskurs API → Jahresdurchschnitt API → Hinterlegte Standardwerte
+- Fallback-Kette: Tageskurs API → Hinterlegte Standardwerte
 
 ### Beispiel
 
