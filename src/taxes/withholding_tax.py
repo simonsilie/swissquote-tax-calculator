@@ -94,8 +94,12 @@ class WithholdingTaxSummary:
             foreign_creditable_by_country=tuple(
                 sorted(
                     {
-                        country: amount
-                        for country, amount in self.foreign_creditable_by_country + other.foreign_creditable_by_country
+                        country: sum(
+                            a
+                            for c, a in self.foreign_creditable_by_country + other.foreign_creditable_by_country
+                            if c == country
+                        )
+                        for country, _ in self.foreign_creditable_by_country + other.foreign_creditable_by_country
                     }.items()
                 )
             ),

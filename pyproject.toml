@@ -1,5 +1,5 @@
 [project]
-name = "taxes"
+name = "swissquote-tax-calculator"
 version = "0.1.0"
 description = "CLI tool to evaluate Swissquote bank transaction CSVs for German tax declarations (Anlage KAP / KAP-INV)"
 requires-python = ">=3.14"
@@ -13,8 +13,12 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.9.17,<0.10.0"]
+requires = ["uv_build>=0.9.17,<0.12.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "taxes"
+module-root = "src"
 
 [project.scripts]
 steuer-auswertung = "taxes.cli:main"

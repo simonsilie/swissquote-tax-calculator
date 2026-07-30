@@ -295,10 +295,6 @@ def _md_to_html(markdown_text: str) -> str:
 </html>"""
 
 
-def _escape_html(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
 def export_elster_mapping(
     output_dir: Path,
     tax_year: int,

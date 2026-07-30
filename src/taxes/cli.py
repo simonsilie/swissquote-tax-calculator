@@ -228,16 +228,19 @@ def main() -> None:
     withholding_tax_transactions: pl.DataFrame = tax_year_df.filter(
         pl.col(args.col_type).is_in(args.withholding_tax_types)
     )
-    stock_sales = calculate_realized_stock_results(
-        df,
-        args.purchase_types,
-        args.sale_types,
-        args.col_date,
-        args.col_type,
-        args.col_isin,
-        args.col_quantity,
-        args.col_eur,
-    ).filter(pl.col(args.col_date).dt.year() == tax_year)
+    try:
+        stock_sales = calculate_realized_stock_results(
+            df,
+            args.purchase_types,
+            args.sale_types,
+            args.col_date,
+            args.col_type,
+            args.col_isin,
+            args.col_quantity,
+            args.col_eur,
+        ).filter(pl.col(args.col_date).dt.year() == tax_year)
+    except ValueError as error:
+        sys.exit(f"Fehler: {error}")
 
     total_interest: float = interest[args.col_gross_eur].sum()
     total_stock_sales: float = float(stock_sales["Gewinn_Verlust_EUR"].sum())

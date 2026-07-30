@@ -1,6 +1,4 @@
-import sys
 from collections import deque
-from typing import Deque
 
 import polars as pl
 
@@ -15,7 +13,12 @@ def calculate_realized_stock_results(
     quantity_col: str,
     eur_col: str,
 ) -> pl.DataFrame:
-    """Calculate realized stock gains and losses using FIFO cost-basis matching."""
+    """Calculate realized stock gains and losses using FIFO cost-basis matching.
+
+    Raises:
+        ValueError: If required columns are missing, data is incomplete, or
+            the FIFO lot inventory is insufficient for a sale.
+    """
     result_schema = {
         date_col: pl.Datetime,
         isin_col: pl.String,
@@ -31,13 +34,13 @@ def calculate_realized_stock_results(
     required_cols = [isin_col, quantity_col]
     missing = [column for column in required_cols if column not in dataframe.columns]
     if missing:
-        sys.exit(f"Fehler: Fehlende Spalten für die Aktienverkäufe: {missing}")
+        raise ValueError(f"Fehlende Spalten für die Aktienverkäufe: {missing}")
 
     if security_transactions[isin_col].is_null().any() or security_transactions[quantity_col].is_null().any():
-        sys.exit("Fehler: Aktienkäufe und -verkäufe benötigen ISIN und Anzahl")
+        raise ValueError("Aktienkäufe und -verkäufe benötigen ISIN und Anzahl")
 
     transactions = security_transactions.sort(date_col).to_dicts()
-    lots_by_isin: dict[str, Deque[dict[str, float]]] = {}
+    lots_by_isin: dict[str, deque[dict[str, float]]] = {}
     results: list[dict[str, object]] = []
 
     for transaction in transactions:
@@ -45,7 +48,7 @@ def calculate_realized_stock_results(
         quantity = float(transaction[quantity_col])
         transaction_type = str(transaction[type_col])
         if quantity <= 0:
-            sys.exit(f"Fehler: Ungültige Anzahl für {isin}: {quantity}")
+            raise ValueError(f"Ungültige Anzahl für {isin}: {quantity}")
 
         if transaction_type in purchase_types:
             lots_by_isin.setdefault(isin, deque()).append(
@@ -66,8 +69,8 @@ def calculate_realized_stock_results(
                 lots.popleft()
 
         if remaining_quantity > 1e-9:
-            sys.exit(
-                f"Fehler: Für Verkauf von {isin} fehlen {remaining_quantity:.8g} Stück im FIFO-Bestand. "
+            raise ValueError(
+                f"Für Verkauf von {isin} fehlen {remaining_quantity:.8g} Stück im FIFO-Bestand. "
                 "Ergänzen Sie Käufe aus Vorjahren in der CSV."
             )
 

@@ -1,6 +1,5 @@
 import sys
 from pathlib import Path
-from typing import Optional
 
 import polars as pl
 from loguru import logger
@@ -64,7 +63,7 @@ def load_csv(
     return dataframe
 
 
-def detect_tax_year(dataframe: pl.DataFrame, date_col: str, requested_year: Optional[int] = None) -> int:
+def detect_tax_year(dataframe: pl.DataFrame, date_col: str, requested_year: int | None = None) -> int:
     """Detect the tax year, or select one explicitly for a historical CSV."""
     years = dataframe[date_col].dt.year().drop_nulls().unique()
     if len(years) == 0:
