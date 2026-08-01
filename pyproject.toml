@@ -9,6 +9,8 @@ dependencies = [
     "markdown>=3.7",
     "polars>=1.16.0",
     "pyarrow>=25.0.0",
+    "streamlit>=1.40.0",
+    "watchdog>=6.0.0",
     "weasyprint>=63.0",
 ]
 
@@ -22,6 +24,7 @@ module-root = "src"
 
 [project.scripts]
 swissquote-tax-calculator = "taxes.cli:main"
+swissquote-tax-app = "taxes.app:run_app"
 
 [dependency-groups]
 dev = [

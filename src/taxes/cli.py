@@ -4,10 +4,8 @@ from argparse import Namespace
 from pathlib import Path
 
 import configargparse
-import polars as pl
 from loguru import logger
 
-from taxes.currency_conversion import apply_fx_rates_daily
 from taxes.elster_export import export_elster_mapping
 from taxes.fx_rates import CACHE_FILE, DailyFXRateFetcher
 from taxes.reporting import (
@@ -16,39 +14,16 @@ from taxes.reporting import (
     print_section,
     print_stock_sale_tax_note,
 )
-from taxes.stock_sales import calculate_realized_stock_results
-from taxes.transactions import detect_tax_year, load_csv, validate_data
-from taxes.withholding_tax import (
-    WithholdingTaxSummary,
-    classify_embedded_withholding_taxes,
-    classify_standalone_withholding_taxes,
-    load_security_tax_rules,
-    tag_dividend_forms,
-    FUND_FORM,
-    DOMESTIC_SHARE_FORM,
-    FOREIGN_SHARE_FORM,
+from taxes.service import (
+    DEFAULT_COLUMNS,
+    DEFAULT_DIVIDEND_TYPES,
+    DEFAULT_INTEREST_TYPES,
+    DEFAULT_PURCHASE_TYPES,
+    DEFAULT_SALE_TYPES,
+    DEFAULT_WITHHOLDING_TAX_TYPES,
+    TaxCalculationResult,
+    calculate_taxes,
 )
-
-DEFAULT_DIVIDEND_TYPES: list[str] = ["Dividende"]
-DEFAULT_INTEREST_TYPES: list[str] = ["Zinsen auf Einlagen"]
-DEFAULT_WITHHOLDING_TAX_TYPES: list[str] = ["Steuerrückbehalt", "Quellensteuer", "Withholding Tax"]
-DEFAULT_PURCHASE_TYPES: list[str] = ["Kauf"]
-DEFAULT_SALE_TYPES: list[str] = ["Verkauf"]
-DEFAULT_WITHHOLDING_TAX_RULES_FILE = Path("withholding-tax-rules.toml")
-
-DEFAULT_COLUMNS: dict[str, str] = {
-    "date": "Datum",
-    "name": "Name",
-    "transaction_type": "Transaktionen",
-    "currency": "Währung",
-    "net_amount": "Nettobetrag",
-    "net_amount_eur": "Nettobetrag_EUR",
-    "gross_amount_eur": "Bruttobetrag_EUR",
-    "withholding_tax": "Kosten",
-    "withholding_tax_eur": "Quellensteuer_EUR",
-    "isin": "ISIN",
-    "quantity": "Anzahl",
-}
 
 
 def parse_args() -> Namespace:
@@ -158,6 +133,111 @@ def parse_args() -> Namespace:
     return parser.parse_args()
 
 
+def _print_cli_output(result: TaxCalculationResult) -> None:
+    rt = result
+    wts = rt.withholding_tax_summary
+    logger.info("1. Dividenden (Bruttoerträge vor Quellensteuer):")
+    logger.info(
+        "   Anlage KAP (Zeile 18 - Inländische Kapitalerträge, deutsche Aktien): "
+        f"{format_amount(rt.total_domestic_share_dividends, rt.round)}"
+    )
+    logger.info(
+        "   Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): "
+        f"{format_amount(rt.total_foreign_share_dividends, rt.round)}"
+    )
+    logger.info(
+        "   Anlage KAP-INV (Zeile 4 - Investmentfonds-/ETF-Ausschüttungen): "
+        f"{format_amount(rt.total_fund_dividends, rt.round)}"
+    )
+    zinsen_text = f"2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   {format_amount(rt.total_interest, rt.round)}"
+    logger.info(zinsen_text)
+    if rt.col_withholding_tax_eur in rt.df.columns or not rt.withholding_tax_transactions.is_empty():
+        logger.info(
+            "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): "
+            f"{format_amount(wts.foreign_creditable, rt.round)}"
+        )
+        for country, amount in wts.foreign_creditable_by_country:
+            logger.info(f"   {country}: {format_amount(amount, rt.round)}")
+        logger.info(
+            "   Davon Quellensteuer auf Dividenden: "
+            f"{format_amount(rt.dividend_tax_summary.foreign_creditable, rt.round)}"
+        )
+        logger.info(
+            f"   Davon Quellensteuer auf Zinsen: {format_amount(rt.interest_tax_summary.foreign_creditable, rt.round)}"
+        )
+        if wts.foreign_excess:
+            logger.info(
+                f"   Nicht anrechenbarer ausländischer Steuerüberhang: {format_amount(wts.foreign_excess, rt.round)}"
+            )
+        if wts.swiss_refundable:
+            logger.info(
+                "   Davon Schweizer Verrechnungssteuer, separat rückforderbar: "
+                f"{format_amount(wts.swiss_refundable, rt.round)} "
+                "(Über eF85 direkt bei der Schweizer ESTV zurückzufordern)"
+            )
+        logger.info("4. Anlage KAP (Steueranrechnung):")
+        logger.info(f"   Zeile 37 - Kapitalertragsteuer: {format_amount(wts.domestic_capital_gains_tax, rt.round)}")
+        logger.info(f"   Zeile 38 - Solidaritätszuschlag: {format_amount(wts.domestic_solidarity_surcharge, rt.round)}")
+        logger.info(
+            f"   Summe deutsche Kapitalertragsteuer einschließlich Soli: {format_amount(wts.domestic, rt.round)}"
+        )
+        if wts.unclassified:
+            logger.info(
+                "   Nicht in Zeile 41 (fehlende ISIN-Regel oder Bruttobetrag): "
+                f"{format_amount(wts.unclassified, rt.round)}"
+            )
+    stock_sales_text = (
+        f"5. Realisierte Gewinne/Verluste aus Aktienverkäufen: {format_amount(rt.total_stock_sales, rt.round)}"
+    )
+    logger.info(stock_sales_text)
+    print_stock_sale_tax_note(rt.stock_sales, "Gewinn_Verlust_EUR", rt.round)
+
+
+def _print_cli_details(result: TaxCalculationResult) -> None:
+    rt = result
+    detail_cols: list[str] = [
+        rt.col_date,
+        rt.col_name,
+        rt.col_amount,
+        rt.col_currency,
+        rt.col_eur,
+        rt.col_gross_eur,
+        rt.col_withholding_tax,
+        rt.col_withholding_tax_eur,
+        "Formular",
+        "Quellenstaat",
+        "Steuerbehandlung",
+        "Anrechenbare_Quellensteuer_EUR",
+        "Nicht_anrechenbare_Quellensteuer_EUR",
+        "Inlaendische_Kapitalertragsteuer_EUR",
+        "Solidaritaetszuschlag_EUR",
+        "Nicht_klassifizierte_Steuer_EUR",
+    ]
+    print_section("Details Dividenden", rt.dividends, detail_cols, rt.col_gross_eur, rt.round)
+    print_section("Details Zinsen", rt.interest, detail_cols, rt.col_gross_eur, rt.round)
+    print_section(
+        "Details separate Quellensteuer-Buchungen",
+        rt.withholding_tax_transactions,
+        detail_cols,
+        rt.col_eur,
+        rt.round,
+    )
+    print_section(
+        "Details Aktienverkäufe",
+        rt.stock_sales,
+        [
+            rt.col_date,
+            rt.col_isin,
+            rt.col_quantity,
+            "Verkaufserloes_EUR",
+            "Anschaffungskosten_EUR",
+            "Gewinn_Verlust_EUR",
+        ],
+        "Gewinn_Verlust_EUR",
+        rt.round,
+    )
+
+
 def main() -> None:
     """Evaluate Swissquote transaction CSV for German tax declarations (Anlage KAP / KAP-INV)."""
     logger.remove()
@@ -174,237 +254,56 @@ def main() -> None:
     if args.csv_file is None:
         sys.exit("Fehler: csv_file ist erforderlich (z.B. swissquote-tax-calculator transaktionen.csv)")
 
-    withholding_tax_rules_path = args.withholding_tax_rules
-    if withholding_tax_rules_path is None and DEFAULT_WITHHOLDING_TAX_RULES_FILE.is_file():
-        withholding_tax_rules_path = DEFAULT_WITHHOLDING_TAX_RULES_FILE
-
     try:
-        withholding_tax_rules = load_security_tax_rules(withholding_tax_rules_path)
+        result = calculate_taxes(
+            csv_file=args.csv_file,
+            tax_year=args.tax_year,
+            encoding=args.encoding,
+            sep=args.sep,
+            dividend_types=args.dividend_types,
+            interest_types=args.interest_types,
+            withholding_tax_types=args.withholding_tax_types,
+            purchase_types=args.purchase_types,
+            sale_types=args.sale_types,
+            col_date=args.col_date,
+            col_name=args.col_name,
+            col_type=args.col_type,
+            col_currency=args.col_currency,
+            col_amount=args.col_amount,
+            col_withholding_tax=args.col_withholding_tax,
+            col_withholding_tax_eur=args.col_withholding_tax_eur,
+            col_isin=args.col_isin,
+            col_quantity=args.col_quantity,
+            col_eur=args.col_eur,
+            col_gross_eur=args.col_gross_eur,
+            round_amount=args.round,
+            withholding_tax_rules_path=args.withholding_tax_rules,
+        )
     except ValueError as error:
-        sys.exit(f"Fehler beim Laden der Quellensteuer-Regeln: {error}")
+        sys.exit(str(error))
 
-    df = load_csv(
-        args.csv_file,
-        args.encoding,
-        args.sep,
-        args.col_date,
-        args.col_amount,
-        args.col_withholding_tax,
-    )
-
-    required_cols: list[str] = [args.col_type, args.col_currency, args.col_amount]
-    missing: list[str] = [c for c in required_cols if c not in df.columns]
-    if missing:
-        sys.exit(f"Fehler: Fehlende Spalten in CSV: {missing}")
-
-    tax_year: int = detect_tax_year(df, args.col_date, args.tax_year)
-    validate_data(df, args.col_amount, args.col_currency, args.col_type)
-
-    fetcher = DailyFXRateFetcher()
-
-    logger.info(f"=== AUSWERTUNG FÜR STEUERJAHR {tax_year} ===")
-    df = apply_fx_rates_daily(df, fetcher, args.col_date, args.col_currency, args.col_amount, args.col_eur)
-
-    if args.col_withholding_tax in df.columns:
-        df = apply_fx_rates_daily(
-            df,
-            fetcher,
-            args.col_date,
-            args.col_currency,
-            args.col_withholding_tax,
-            args.col_withholding_tax_eur,
-        )
-
-    if args.col_withholding_tax_eur in df.columns:
-        df = df.with_columns(
-            (pl.col(args.col_eur) + pl.col(args.col_withholding_tax_eur).abs().fill_null(0.0)).alias(args.col_gross_eur)
-        )
-    else:
-        df = df.with_columns(pl.col(args.col_eur).alias(args.col_gross_eur))
-
-    tax_year_df = df.filter(pl.col(args.col_date).dt.year() == tax_year)
-    dividends: pl.DataFrame = tax_year_df.filter(pl.col(args.col_type).is_in(args.dividend_types))
-    interest: pl.DataFrame = tax_year_df.filter(pl.col(args.col_type).is_in(args.interest_types))
-    withholding_tax_transactions: pl.DataFrame = tax_year_df.filter(
-        pl.col(args.col_type).is_in(args.withholding_tax_types)
-    )
-    try:
-        stock_sales = calculate_realized_stock_results(
-            df,
-            args.purchase_types,
-            args.sale_types,
-            args.col_date,
-            args.col_type,
-            args.col_isin,
-            args.col_quantity,
-            args.col_eur,
-        ).filter(pl.col(args.col_date).dt.year() == tax_year)
-    except ValueError as error:
-        sys.exit(f"Fehler: {error}")
-
-    total_interest: float = interest[args.col_gross_eur].sum()
-    total_stock_sales: float = float(stock_sales["Gewinn_Verlust_EUR"].sum())
-    dividend_tax_summary = WithholdingTaxSummary()
-    interest_tax_summary = WithholdingTaxSummary()
-    standalone_tax_summary = WithholdingTaxSummary()
-    if args.col_withholding_tax_eur in df.columns:
-        dividends, dividend_tax_summary = classify_embedded_withholding_taxes(
-            dividends,
-            withholding_tax_rules,
-            args.col_isin,
-            args.col_eur,
-            args.col_withholding_tax_eur,
-        )
-        interest, interest_tax_summary = classify_embedded_withholding_taxes(
-            interest,
-            withholding_tax_rules,
-            args.col_isin,
-            args.col_eur,
-            args.col_withholding_tax_eur,
-        )
-    withholding_tax_transactions, standalone_tax_summary = classify_standalone_withholding_taxes(
-        withholding_tax_transactions,
-        withholding_tax_rules,
-        args.col_isin,
-        args.col_eur,
-    )
-    withholding_tax_summary = dividend_tax_summary + interest_tax_summary + standalone_tax_summary
-
-    dividends = tag_dividend_forms(dividends, withholding_tax_rules, args.col_isin)
-    domestic_share_dividends = dividends.filter(pl.col("Formular") == DOMESTIC_SHARE_FORM)
-    foreign_share_dividends = dividends.filter(pl.col("Formular") == FOREIGN_SHARE_FORM)
-    fund_dividends = dividends.filter(pl.col("Formular") == FUND_FORM)
-    total_domestic_share_dividends: float = float(domestic_share_dividends[args.col_gross_eur].sum())
-    total_foreign_share_dividends: float = float(foreign_share_dividends[args.col_gross_eur].sum())
-    total_fund_dividends: float = float(fund_dividends[args.col_gross_eur].sum())
-
-    logger.info("1. Dividenden (Bruttoerträge vor Quellensteuer):")
-    logger.info(
-        "   Anlage KAP (Zeile 18 - Inländische Kapitalerträge, deutsche Aktien): "
-        f"{format_amount(total_domestic_share_dividends, args.round)}"
-    )
-    logger.info(
-        "   Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): "
-        f"{format_amount(total_foreign_share_dividends, args.round)}"
-    )
-    logger.info(
-        "   Anlage KAP-INV (Zeile 4 - Investmentfonds-/ETF-Ausschüttungen): "
-        f"{format_amount(total_fund_dividends, args.round)}"
-    )
-    zinsen_text = f"2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   {format_amount(total_interest, args.round)}"
-    logger.info(zinsen_text)
-    if args.col_withholding_tax_eur in df.columns or not withholding_tax_transactions.is_empty():
-        logger.info(
-            "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): "
-            f"{format_amount(withholding_tax_summary.foreign_creditable, args.round)}"
-        )
-        for country, amount in withholding_tax_summary.foreign_creditable_by_country:
-            logger.info(f"   {country}: {format_amount(amount, args.round)}")
-        logger.info(
-            "   Davon Quellensteuer auf Dividenden: "
-            f"{format_amount(dividend_tax_summary.foreign_creditable, args.round)}"
-        )
-        logger.info(
-            f"   Davon Quellensteuer auf Zinsen: {format_amount(interest_tax_summary.foreign_creditable, args.round)}"
-        )
-        if withholding_tax_summary.foreign_excess:
-            logger.info(
-                "   Nicht anrechenbarer ausländischer Steuerüberhang: "
-                f"{format_amount(withholding_tax_summary.foreign_excess, args.round)}"
-            )
-        if withholding_tax_summary.swiss_refundable:
-            logger.info(
-                "   Davon Schweizer Verrechnungssteuer, separat rückforderbar: "
-                f"{format_amount(withholding_tax_summary.swiss_refundable, args.round)} "
-                "(Über eF85 direkt bei der Schweizer ESTV zurückzufordern)"
-            )
-        logger.info("4. Anlage KAP (Steueranrechnung):")
-        logger.info(
-            "   Zeile 37 - Kapitalertragsteuer: "
-            f"{format_amount(withholding_tax_summary.domestic_capital_gains_tax, args.round)}"
-        )
-        logger.info(
-            "   Zeile 38 - Solidaritätszuschlag: "
-            f"{format_amount(withholding_tax_summary.domestic_solidarity_surcharge, args.round)}"
-        )
-        logger.info(
-            "   Summe deutsche Kapitalertragsteuer einschließlich Soli: "
-            f"{format_amount(withholding_tax_summary.domestic, args.round)}"
-        )
-        if withholding_tax_summary.unclassified:
-            logger.info(
-                "   Nicht in Zeile 41 (fehlende ISIN-Regel oder Bruttobetrag): "
-                f"{format_amount(withholding_tax_summary.unclassified, args.round)}"
-            )
-    stock_sales_text = (
-        f"5. Realisierte Gewinne/Verluste aus Aktienverkäufen: {format_amount(total_stock_sales, args.round)}"
-    )
-    logger.info(stock_sales_text)
-    print_stock_sale_tax_note(stock_sales, "Gewinn_Verlust_EUR", args.round)
+    _print_cli_output(result)
 
     if not args.no_details:
-        detail_cols: list[str] = [
-            args.col_date,
-            args.col_name,
-            args.col_amount,
-            args.col_currency,
-            args.col_eur,
-            args.col_gross_eur,
-            args.col_withholding_tax,
-            args.col_withholding_tax_eur,
-            "Formular",
-            "Quellenstaat",
-            "Steuerbehandlung",
-            "Anrechenbare_Quellensteuer_EUR",
-            "Nicht_anrechenbare_Quellensteuer_EUR",
-            "Inlaendische_Kapitalertragsteuer_EUR",
-            "Solidaritaetszuschlag_EUR",
-            "Nicht_klassifizierte_Steuer_EUR",
-        ]
-        print_section("Details Dividenden", dividends, detail_cols, args.col_gross_eur, args.round)
-        print_section("Details Zinsen", interest, detail_cols, args.col_gross_eur, args.round)
-        print_section(
-            "Details separate Quellensteuer-Buchungen",
-            withholding_tax_transactions,
-            detail_cols,
-            args.col_eur,
-            args.round,
-        )
-        print_section(
-            "Details Aktienverkäufe",
-            stock_sales,
-            [
-                args.col_date,
-                args.col_isin,
-                args.col_quantity,
-                "Verkaufserloes_EUR",
-                "Anschaffungskosten_EUR",
-                "Gewinn_Verlust_EUR",
-            ],
-            "Gewinn_Verlust_EUR",
-            args.round,
-        )
+        _print_cli_details(result)
 
     if args.output:
-        export_details(dividends, interest, stock_sales, args.output, args.sep)
+        export_details(result.dividends, result.interest, result.stock_sales, args.output, args.sep)
         logger.info(f"\nDetails nach '{args.output}' exportiert")
-
-    stock_gains = float(stock_sales.filter(pl.col("Gewinn_Verlust_EUR") > 0)["Gewinn_Verlust_EUR"].sum())
-    stock_losses = float(stock_sales.filter(pl.col("Gewinn_Verlust_EUR") < 0)["Gewinn_Verlust_EUR"].sum())
 
     if args.export_summary:
         export_elster_mapping(
             output_dir=args.export_dir,
-            tax_year=tax_year,
-            total_domestic_share_dividends=total_domestic_share_dividends,
-            total_foreign_share_dividends=total_foreign_share_dividends,
-            total_interest=total_interest,
-            total_fund_dividends=total_fund_dividends,
-            withholding_tax_summary=withholding_tax_summary,
-            stock_gains=stock_gains,
-            stock_losses=stock_losses,
-            fund_dividends=fund_dividends,
-            round_amount=args.round,
+            tax_year=result.tax_year,
+            total_domestic_share_dividends=result.total_domestic_share_dividends,
+            total_foreign_share_dividends=result.total_foreign_share_dividends,
+            total_interest=result.total_interest,
+            total_fund_dividends=result.total_fund_dividends,
+            withholding_tax_summary=result.withholding_tax_summary,
+            stock_gains=result.stock_gains,
+            stock_losses=result.stock_losses,
+            fund_dividends=result.fund_dividends,
+            round_amount=result.round,
         )
 
 

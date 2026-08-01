@@ -41,9 +41,29 @@ uv sync
 
 ## Nutzung
 
+### CLI
+
 ```bash
 uv run swissquote-tax-calculator transactions.csv [OPTIONEN]
 ```
+
+### Web-Oberfläche
+
+Zusätzlich zur Kommandozeile steht eine browserbasierte Oberfläche zur Verfügung:
+
+```bash
+uv run swissquote-tax-app
+```
+
+Die Anwendung öffnet sich unter `http://localhost:8501`. In der Seitenleiste können Steuerjahr und Rundung konfiguriert werden. Nach dem Hochladen der CSV-Datei und einem Klick auf **Auswertung starten** werden die Ergebnisse in übersichtlichen Metriken dargestellt:
+
+- Dividenden nach Formularen (Anlage KAP Zeile 18/19, KAP-INV Zeile 4)
+- Ausländische Zinsen
+- Anrechenbare Quellensteuer mit Aufteilung nach Ländern
+- Deutsche Kapitalertragsteuer und Solidaritätszuschlag
+- Realisierte Gewinne/Verluste aus Aktienverkäufen (FIFO)
+
+Die Transaktionsdetails sind in einem aufklappbaren Bereich mit Tabs für Dividenden, Zinsen, Quellensteuer-Buchungen und Aktienverkäufe einsehbar. Der ELSTER-Mapping-Guide kann als Markdown und PDF heruntergeladen werden.
 
 ### Pflichtargument
 
