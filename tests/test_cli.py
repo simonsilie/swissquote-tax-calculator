@@ -254,3 +254,64 @@ max_creditable_rate = 0.15
     assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
     assert "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): 0.00 EUR" in result.stdout
     assert "Nicht in Zeile 41 (fehlende ISIN-Regel oder Bruttobetrag): 14.29 EUR" in result.stdout
+
+
+def test_invalid_date_format_is_reported_with_row_numbers() -> None:
+    """Unparseable dates abort with the expected format and affected CSV line numbers."""
+    csv_content = """Datum;Transaktionen;Nettobetrag;Währung
+31-12-2025 15:57:09;Dividende;10.00;EUR
+not-a-date;Dividende;10.00;EUR
+31-12-2025;Dividende;10.00;EUR
+"""
+
+    result = run_cli(csv_content, ["--no-details"], environment=OFFLINE)
+
+    assert result.returncode != 0
+    assert "Ungültige Datumsformate in Spalte 'Datum'" in result.stderr
+    assert "2 betroffene Zeilen" in result.stderr
+    assert "Zeile 3: 'not-a-date'" in result.stderr
+    assert "Zeile 4: '31-12-2025'" in result.stderr
+
+
+def test_invalid_number_format_is_reported_with_row_numbers() -> None:
+    """Unparseable amounts abort with the affected CSV line numbers."""
+    csv_content = """Datum;Transaktionen;Nettobetrag;Währung
+31-12-2025 15:57:09;Dividende;10.00;EUR
+01-01-2025 09:00:00;Dividende;12,3a4;EUR
+02-01-2025 09:00:00;Dividende;abc;EUR
+"""
+
+    result = run_cli(csv_content, ["--no-details"], environment=OFFLINE)
+
+    assert result.returncode != 0
+    assert "Ungültige Zahlenformate in Spalte 'Nettobetrag'" in result.stderr
+    assert "2 betroffene Zeilen" in result.stderr
+    assert "Zeile 3: '12,3a4'" in result.stderr
+    assert "Zeile 4: 'abc'" in result.stderr
+
+
+def test_missing_values_are_reported_with_row_numbers() -> None:
+    """Missing mandatory values reference the affected CSV line numbers."""
+    csv_content = """Datum;Transaktionen;Nettobetrag;Währung
+31-12-2025 15:57:09;Dividende;10.00;EUR
+01-01-2025 09:00:00;Dividende;;EUR
+"""
+
+    result = run_cli(csv_content, ["--no-details"], environment=OFFLINE)
+
+    assert result.returncode != 0
+    assert "Fehlende Werte in 'Nettobetrag'" in result.stderr
+    assert "Zeile(n): [3]" in result.stderr
+
+
+def test_negative_amounts_and_swissquote_conventions_parse() -> None:
+    """Negative amounts, decimal commas, and '-' placeholders parse correctly."""
+    csv_content = """Datum;Transaktionen;Name;ISIN;Anzahl;Nettobetrag;Kosten;Währung
+01-01-2025 09:00:00;Kauf;ABC;"DE0000000001";2.0;-200,00;-;EUR
+01-03-2025 09:00:00;Verkauf;ABC;"DE0000000001";2.0;250,00;0.00;EUR
+"""
+
+    result = run_cli(csv_content, ["--no-details"], environment=OFFLINE)
+
+    assert result.returncode == 0, f"Script failed with stderr: {result.stderr}"
+    assert "50.00 EUR" in result.stdout  # 250 - 200 realized gain
