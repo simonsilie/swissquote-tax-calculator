@@ -96,3 +96,86 @@ def test_get_rates_for_date() -> None:
             assert rates["USD"] == 1.09
             assert rates["CHF"] == 0.94
             assert rates["EUR"] == 1.0
+
+
+def test_fetch_with_retry_succeeds_after_transient_failures() -> None:
+    """Transient failures are retried with backoff until the API responds."""
+    from taxes import fx_rates
+
+    responses = [
+        fx_rates.URLError("connection reset"),
+        fx_rates.json.JSONDecodeError("truncated body", "", 0),
+        '{"rates": {"USD": 1.05}}',
+    ]
+
+    def fake_urlopen(request: object, timeout: float = 0) -> object:
+        outcome = responses.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+
+        class FakeResponse:
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def read(self) -> bytes:
+                return outcome.encode()  # type: ignore[attr-defined]
+
+        return FakeResponse()
+
+    with patch.object(fx_rates.time, "sleep") as mock_sleep, patch.object(
+        fx_rates.urllib.request, "urlopen", side_effect=fake_urlopen
+    ):
+        data = fx_rates._fetch_with_retry("https://api.frankfurter.dev/v1/2025-01-15")
+
+    assert data == {"rates": {"USD": 1.05}}
+    assert mock_sleep.call_count == 2  # backoff after each failed attempt
+
+
+def test_fetch_with_retry_gives_up_after_max_attempts() -> None:
+    """Persistent failures return None after exhausting all attempts."""
+    from taxes import fx_rates
+
+    with patch.object(fx_rates.time, "sleep") as mock_sleep, patch.object(
+        fx_rates.urllib.request, "urlopen", side_effect=fx_rates.URLError("network down")
+    ):
+        data = fx_rates._fetch_with_retry("https://api.frankfurter.dev/v1/2025-01-15", max_attempts=3)
+
+    assert data is None
+    assert mock_sleep.call_count == 2  # no sleep after the final attempt
+
+
+def test_fetch_with_retry_does_not_retry_client_errors() -> None:
+    """HTTP 4xx errors (except 408/429) fail immediately without retry."""
+    from taxes import fx_rates
+
+    error = fx_rates.urllib.error.HTTPError(
+        "https://api.frankfurter.dev/v1/x", 404, "Not Found", None, None
+    )
+
+    with patch.object(fx_rates.time, "sleep") as mock_sleep, patch.object(
+        fx_rates.urllib.request, "urlopen", side_effect=error
+    ):
+        data = fx_rates._fetch_with_retry("https://api.frankfurter.dev/v1/2025-01-15")
+
+    assert data is None
+    mock_sleep.assert_not_called()
+
+
+def test_fetch_with_retry_retries_server_errors() -> None:
+    """HTTP 5xx responses are retried, then give up and return None."""
+    from taxes import fx_rates
+
+    error = fx_rates.urllib.error.HTTPError(
+        "https://api.frankfurter.dev/v1/x", 503, "Service Unavailable", None, None
+    )
+
+    with patch.object(fx_rates.time, "sleep") as mock_sleep, patch.object(
+        fx_rates.urllib.request, "urlopen", side_effect=error
+    ):
+        data = fx_rates._fetch_with_retry("https://api.frankfurter.dev/v1/2025-01-15", max_attempts=3)
+
+    assert data is None
+    assert mock_sleep.call_count == 2

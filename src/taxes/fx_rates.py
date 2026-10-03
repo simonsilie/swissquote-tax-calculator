@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import json
 import os
+import random
+import time
+import urllib.error
 import urllib.request
 from datetime import date
 from pathlib import Path
@@ -22,6 +25,71 @@ FALLBACK_FX_RATES: dict[int, dict[str, float]] = {
 DEFAULT_CURRENCIES: tuple[str, ...] = ("USD", "CHF", "EUR")
 CACHE_DIR = Path.home() / ".cache" / "swissquote-tax"
 CACHE_FILE = CACHE_DIR / "fx_rates.json"
+
+# Retry configuration for transient API failures.
+API_MAX_ATTEMPTS = 3
+API_INITIAL_BACKOFF_SECONDS = 1.0
+API_BACKOFF_MULTIPLIER = 2.0
+API_REQUEST_TIMEOUT_SECONDS = 10
+
+# HTTP status codes considered transient and worth retrying.
+HTTP_REQUEST_TIMEOUT = 408
+HTTP_TOO_MANY_REQUESTS = 429
+HTTP_SERVER_ERRORS_START = 500
+
+
+def _is_retryable_http_error(error: urllib.error.HTTPError) -> bool:
+    """Only server-side and rate-limit responses are worth retrying."""
+    return (
+        error.code >= HTTP_SERVER_ERRORS_START
+        or error.code in (HTTP_REQUEST_TIMEOUT, HTTP_TOO_MANY_REQUESTS)
+    )
+
+
+def _fetch_with_retry(
+    url: str,
+    max_attempts: int = API_MAX_ATTEMPTS,
+    initial_backoff: float = API_INITIAL_BACKOFF_SECONDS,
+) -> Optional[dict[object, object]]:
+    """GET a JSON document with exponential backoff and jitter.
+
+    Retries transient failures (connection errors, timeouts, HTTP 408/429/5xx).
+    Client errors (e.g. 404) and permanently malformed responses return None
+    immediately. Returns None when all attempts are exhausted.
+    """
+    request = urllib.request.Request(url)
+    request.add_header("User-Agent", "Mozilla/5.0 (compatible; TaxScript/1.0)")
+
+    backoff = initial_backoff
+    last_error: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        last_error = None
+        try:
+            with urllib.request.urlopen(request, timeout=API_REQUEST_TIMEOUT_SECONDS) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as e:
+            if not _is_retryable_http_error(e):
+                logger.warning(f"Frankfurter API client error {e.code} for {url}: {e.reason}")
+                return None
+            last_error = e
+        except (URLError, TimeoutError, OSError) as e:
+            last_error = e
+        except json.JSONDecodeError as e:
+            # Malformed response bodies are often transient (truncated HTML
+            # error pages from proxies), so they are retried as well.
+            last_error = e
+
+        if attempt < max_attempts:
+            sleep_seconds = backoff + random.uniform(0, backoff / 2)
+            logger.warning(
+                f"Frankfurter API attempt {attempt}/{max_attempts} failed ({last_error}); "
+                f"retrying in {sleep_seconds:.1f}s"
+            )
+            time.sleep(sleep_seconds)
+            backoff *= API_BACKOFF_MULTIPLIER
+
+    logger.warning(f"Frankfurter API failed after {max_attempts} attempts: {last_error}")
+    return None
 
 
 class DailyFXRateFetcher:
@@ -67,27 +135,19 @@ class DailyFXRateFetcher:
         date_str = target_date.isoformat()
         currency_param = ",".join(currencies)
         url = f"https://api.frankfurter.dev/v1/{date_str}?from=EUR&to={currency_param}"
-        try:
-            req = urllib.request.Request(url)
-            req.add_header("User-Agent", "Mozilla/5.0 (compatible; TaxScript/1.0)")
-            with urllib.request.urlopen(req, timeout=10) as response:
-                data = json.load(response)
-        except URLError as e:
-            logger.warning(f"Cannot reach Frankfurter API for {date_str}: {e}")
-            return None
-        except json.JSONDecodeError:
-            logger.warning(f"Frankfurter API returned invalid JSON for {date_str}")
+        data = _fetch_with_retry(url)
+        if data is None:
             return None
 
         rates = data.get("rates")
-        if rates is None:
+        if not isinstance(rates, dict):
             logger.warning(f"Frankfurter API response missing 'rates' key for {date_str}")
-            return None
-        if not rates:
-            logger.warning(f"Frankfurter API returned empty rates for {date_str}")
             return None
 
         day_rates = rates.get(date_str, rates)
+        if not isinstance(day_rates, dict):
+            logger.warning(f"Frankfurter API returned unexpected rate shape for {date_str}")
+            return None
         result: dict[str, float] = {"EUR": 1.00}
         for curr in currencies:
             if curr in day_rates:
