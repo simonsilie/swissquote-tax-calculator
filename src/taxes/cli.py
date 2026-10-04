@@ -22,6 +22,7 @@ from taxes.service import (
     DEFAULT_SALE_TYPES,
     DEFAULT_WITHHOLDING_TAX_TYPES,
     TaxCalculationResult,
+    TaxConfig,
     calculate_taxes,
 )
 
@@ -255,7 +256,7 @@ def main() -> None:
         sys.exit("Fehler: csv_file ist erforderlich (z.B. swissquote-tax-calculator transaktionen.csv)")
 
     try:
-        result = calculate_taxes(
+        config = TaxConfig(
             csv_file=args.csv_file,
             tax_year=args.tax_year,
             encoding=args.encoding,
@@ -279,6 +280,7 @@ def main() -> None:
             round_amount=args.round,
             withholding_tax_rules_path=args.withholding_tax_rules,
         )
+        result = calculate_taxes(config)
     except ValueError as error:
         sys.exit(str(error))
 

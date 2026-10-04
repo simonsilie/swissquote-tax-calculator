@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import polars as pl
@@ -42,6 +42,40 @@ DEFAULT_COLUMNS: dict[str, str] = {
 
 
 @dataclass
+class TaxConfig:
+    """Input configuration for a tax calculation run.
+
+    Bundles the CSV source, column mappings, transaction-type mappings, and
+    output options so that ``calculate_taxes`` takes a single object instead
+    of 23 loose parameters. Field defaults mirror the Swissquote standard
+    export; the CLI passes user overrides into a fresh instance.
+    """
+
+    csv_file: Path
+    tax_year: int | None = None
+    encoding: str = "latin1"
+    sep: str = ";"
+    dividend_types: list[str] = field(default_factory=lambda: DEFAULT_DIVIDEND_TYPES.copy())
+    interest_types: list[str] = field(default_factory=lambda: DEFAULT_INTEREST_TYPES.copy())
+    withholding_tax_types: list[str] = field(default_factory=lambda: DEFAULT_WITHHOLDING_TAX_TYPES.copy())
+    purchase_types: list[str] = field(default_factory=lambda: DEFAULT_PURCHASE_TYPES.copy())
+    sale_types: list[str] = field(default_factory=lambda: DEFAULT_SALE_TYPES.copy())
+    col_date: str = DEFAULT_COLUMNS["date"]
+    col_name: str = DEFAULT_COLUMNS["name"]
+    col_type: str = DEFAULT_COLUMNS["transaction_type"]
+    col_currency: str = DEFAULT_COLUMNS["currency"]
+    col_amount: str = DEFAULT_COLUMNS["net_amount"]
+    col_withholding_tax: str = DEFAULT_COLUMNS["withholding_tax"]
+    col_withholding_tax_eur: str = DEFAULT_COLUMNS["withholding_tax_eur"]
+    col_isin: str = DEFAULT_COLUMNS["isin"]
+    col_quantity: str = DEFAULT_COLUMNS["quantity"]
+    col_eur: str = DEFAULT_COLUMNS["net_amount_eur"]
+    col_gross_eur: str = DEFAULT_COLUMNS["gross_amount_eur"]
+    round_amount: bool = False
+    withholding_tax_rules_path: Path | None = None
+
+
+@dataclass
 class TaxCalculationResult:
     tax_year: int
     df: pl.DataFrame
@@ -78,63 +112,29 @@ class TaxCalculationResult:
     round: bool
 
 
-def calculate_taxes(
-    csv_file: Path,
-    tax_year: int | None = None,
-    encoding: str = "latin1",
-    sep: str = ";",
-    dividend_types: list[str] | None = None,
-    interest_types: list[str] | None = None,
-    withholding_tax_types: list[str] | None = None,
-    purchase_types: list[str] | None = None,
-    sale_types: list[str] | None = None,
-    col_date: str | None = None,
-    col_name: str | None = None,
-    col_type: str | None = None,
-    col_currency: str | None = None,
-    col_amount: str | None = None,
-    col_withholding_tax: str | None = None,
-    col_withholding_tax_eur: str | None = None,
-    col_isin: str | None = None,
-    col_quantity: str | None = None,
-    col_eur: str | None = None,
-    col_gross_eur: str | None = None,
-    round_amount: bool = False,
-    withholding_tax_rules_path: Path | None = None,
-) -> TaxCalculationResult:
-    if dividend_types is None:
-        dividend_types = DEFAULT_DIVIDEND_TYPES
-    if interest_types is None:
-        interest_types = DEFAULT_INTEREST_TYPES
-    if withholding_tax_types is None:
-        withholding_tax_types = DEFAULT_WITHHOLDING_TAX_TYPES
-    if purchase_types is None:
-        purchase_types = DEFAULT_PURCHASE_TYPES
-    if sale_types is None:
-        sale_types = DEFAULT_SALE_TYPES
-    if col_date is None:
-        col_date = DEFAULT_COLUMNS["date"]
-    if col_name is None:
-        col_name = DEFAULT_COLUMNS["name"]
-    if col_type is None:
-        col_type = DEFAULT_COLUMNS["transaction_type"]
-    if col_currency is None:
-        col_currency = DEFAULT_COLUMNS["currency"]
-    if col_amount is None:
-        col_amount = DEFAULT_COLUMNS["net_amount"]
-    if col_withholding_tax is None:
-        col_withholding_tax = DEFAULT_COLUMNS["withholding_tax"]
-    if col_withholding_tax_eur is None:
-        col_withholding_tax_eur = DEFAULT_COLUMNS["withholding_tax_eur"]
-    if col_isin is None:
-        col_isin = DEFAULT_COLUMNS["isin"]
-    if col_quantity is None:
-        col_quantity = DEFAULT_COLUMNS["quantity"]
-    if col_eur is None:
-        col_eur = DEFAULT_COLUMNS["net_amount_eur"]
-    if col_gross_eur is None:
-        col_gross_eur = DEFAULT_COLUMNS["gross_amount_eur"]
+def calculate_taxes(config: TaxConfig) -> TaxCalculationResult:
+    tax_year = config.tax_year
+    encoding = config.encoding
+    sep = config.sep
+    dividend_types = config.dividend_types
+    interest_types = config.interest_types
+    withholding_tax_types = config.withholding_tax_types
+    purchase_types = config.purchase_types
+    sale_types = config.sale_types
+    col_date = config.col_date
+    col_name = config.col_name
+    col_type = config.col_type
+    col_currency = config.col_currency
+    col_amount = config.col_amount
+    col_withholding_tax = config.col_withholding_tax
+    col_withholding_tax_eur = config.col_withholding_tax_eur
+    col_isin = config.col_isin
+    col_quantity = config.col_quantity
+    col_eur = config.col_eur
+    col_gross_eur = config.col_gross_eur
+    round_amount = config.round_amount
 
+    withholding_tax_rules_path = config.withholding_tax_rules_path
     if withholding_tax_rules_path is None and DEFAULT_WITHHOLDING_TAX_RULES_FILE.is_file():
         withholding_tax_rules_path = DEFAULT_WITHHOLDING_TAX_RULES_FILE
 
@@ -144,7 +144,7 @@ def calculate_taxes(
         raise ValueError(f"Fehler beim Laden der Quellensteuer-Regeln: {error}") from error
 
     df = load_csv(
-        csv_file,
+        config.csv_file,
         encoding,
         sep,
         col_date,

@@ -6,7 +6,7 @@ import streamlit as st
 
 from taxes.elster_export import export_elster_mapping
 from taxes.reporting import format_amount
-from taxes.service import TaxCalculationResult, calculate_taxes
+from taxes.service import TaxCalculationResult, TaxConfig, calculate_taxes
 
 
 def _display_results(result: TaxCalculationResult) -> None:
@@ -180,11 +180,12 @@ def main() -> None:
 
             with st.spinner("Verarbeite Transaktionen und rufe EZB-Kurse ab..."):
                 try:
-                    st.session_state.result = calculate_taxes(
+                    config = TaxConfig(
                         csv_file=tmp_path,
                         tax_year=tax_year_input if tax_year_input > 0 else None,
                         round_amount=round_amounts,
                     )
+                    st.session_state.result = calculate_taxes(config)
                 except ValueError as error:
                     st.error(str(error))
                     st.stop()
