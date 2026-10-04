@@ -41,7 +41,7 @@ def test_injected_fetcher_is_used_instead_of_the_real_one(tmp_path: Path) -> Non
     )
 
     # 85.00 USD net + 15.00 USD tax = 100.00 USD gross at 2.0 USD/EUR = 50 EUR
-    assert result.total_foreign_share_dividends == pytest.approx(50.0)
+    assert result.dividends.total_foreign_shares == pytest.approx(50.0)
     assert result.withholding_tax_summary.foreign_creditable == pytest.approx(7.5)
     assert result.withholding_tax_summary.foreign_excess == pytest.approx(0.0)
     assert (date(2025, 12, 31), "USD") in fetcher.requested
@@ -75,5 +75,5 @@ def test_injected_fetcher_with_prefix_rule_fallback(tmp_path: Path, monkeypatch:
     # 7.5 EUR tax, capped at 50 EUR gross * 0.15 = 7.5 EUR creditable.
     assert result.withholding_tax_summary.foreign_creditable == pytest.approx(7.5)
     assert result.withholding_tax_summary.foreign_excess == 0.0
-    assert result.dividends["Bruttobetrag_EUR"].to_list() == [pytest.approx(50.0)]
+    assert result.dividends.transactions["Bruttobetrag_EUR"].to_list() == [pytest.approx(50.0)]
     assert isinstance(result.df, pl.DataFrame)

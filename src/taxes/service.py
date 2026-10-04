@@ -6,6 +6,7 @@ from loguru import logger
 
 from taxes.currency_conversion import apply_fx_rates_daily
 from taxes.fx_rates import DailyFXRateFetcher, FXRateFetcher
+from taxes.result import DividendSummary, InterestSummary, Result, StockSalesSummary
 from taxes.stock_sales import calculate_realized_stock_results
 from taxes.transactions import detect_tax_year, load_csv, validate_data
 from taxes.withholding_tax import (
@@ -80,44 +81,7 @@ class TaxConfig:
     fx_fetcher: FXRateFetcher | None = None
 
 
-@dataclass
-class TaxCalculationResult:
-    tax_year: int
-    df: pl.DataFrame
-    tax_year_df: pl.DataFrame
-    dividends: pl.DataFrame
-    interest: pl.DataFrame
-    withholding_tax_transactions: pl.DataFrame
-    stock_sales: pl.DataFrame
-    total_interest: float
-    total_stock_sales: float
-    dividend_tax_summary: WithholdingTaxSummary
-    interest_tax_summary: WithholdingTaxSummary
-    standalone_tax_summary: WithholdingTaxSummary
-    withholding_tax_summary: WithholdingTaxSummary
-    domestic_share_dividends: pl.DataFrame
-    foreign_share_dividends: pl.DataFrame
-    fund_dividends: pl.DataFrame
-    total_domestic_share_dividends: float
-    total_foreign_share_dividends: float
-    total_fund_dividends: float
-    stock_gains: float
-    stock_losses: float
-    col_date: str
-    col_name: str
-    col_amount: str
-    col_currency: str
-    col_type: str
-    col_eur: str
-    col_gross_eur: str
-    col_withholding_tax: str
-    col_withholding_tax_eur: str
-    col_isin: str
-    col_quantity: str
-    round: bool
-
-
-def calculate_taxes(config: TaxConfig) -> TaxCalculationResult:
+def calculate_taxes(config: TaxConfig) -> Result:
     tax_year = config.tax_year
     encoding = config.encoding
     sep = config.sep
@@ -127,7 +91,6 @@ def calculate_taxes(config: TaxConfig) -> TaxCalculationResult:
     purchase_types = config.purchase_types
     sale_types = config.sale_types
     col_date = config.col_date
-    col_name = config.col_name
     col_type = config.col_type
     col_currency = config.col_currency
     col_amount = config.col_amount
@@ -137,7 +100,6 @@ def calculate_taxes(config: TaxConfig) -> TaxCalculationResult:
     col_quantity = config.col_quantity
     col_eur = config.col_eur
     col_gross_eur = config.col_gross_eur
-    round_amount = config.round_amount
 
     withholding_tax_rules_path = config.withholding_tax_rules_path
     if withholding_tax_rules_path is None and DEFAULT_WITHHOLDING_TAX_RULES_FILE.is_file():
@@ -244,38 +206,33 @@ def calculate_taxes(config: TaxConfig) -> TaxCalculationResult:
     stock_gains = float(stock_sales.filter(pl.col("Gewinn_Verlust_EUR") > 0)["Gewinn_Verlust_EUR"].sum())
     stock_losses = float(stock_sales.filter(pl.col("Gewinn_Verlust_EUR") < 0)["Gewinn_Verlust_EUR"].sum())
 
-    return TaxCalculationResult(
+    return Result(
         tax_year=resolved_tax_year,
+        config=config,
         df=df,
         tax_year_df=tax_year_df,
-        dividends=dividends,
-        interest=interest,
+        dividends=DividendSummary(
+            transactions=dividends,
+            domestic_shares=domestic_share_dividends,
+            foreign_shares=foreign_share_dividends,
+            funds=fund_dividends,
+            total_domestic_shares=total_domestic_share_dividends,
+            total_foreign_shares=total_foreign_share_dividends,
+            total_funds=total_fund_dividends,
+            tax_summary=dividend_tax_summary,
+        ),
+        interest=InterestSummary(
+            transactions=interest,
+            total=total_interest,
+            tax_summary=interest_tax_summary,
+        ),
+        stock_sales=StockSalesSummary(
+            transactions=stock_sales,
+            total=total_stock_sales,
+            gains=stock_gains,
+            losses=stock_losses,
+        ),
         withholding_tax_transactions=withholding_tax_transactions,
-        stock_sales=stock_sales,
-        total_interest=total_interest,
-        total_stock_sales=total_stock_sales,
-        dividend_tax_summary=dividend_tax_summary,
-        interest_tax_summary=interest_tax_summary,
         standalone_tax_summary=standalone_tax_summary,
         withholding_tax_summary=combined_withholding_tax_summary,
-        domestic_share_dividends=domestic_share_dividends,
-        foreign_share_dividends=foreign_share_dividends,
-        fund_dividends=fund_dividends,
-        total_domestic_share_dividends=total_domestic_share_dividends,
-        total_foreign_share_dividends=total_foreign_share_dividends,
-        total_fund_dividends=total_fund_dividends,
-        stock_gains=stock_gains,
-        stock_losses=stock_losses,
-        col_date=col_date,
-        col_name=col_name,
-        col_amount=col_amount,
-        col_currency=col_currency,
-        col_type=col_type,
-        col_eur=col_eur,
-        col_gross_eur=col_gross_eur,
-        col_withholding_tax=col_withholding_tax,
-        col_withholding_tax_eur=col_withholding_tax_eur,
-        col_isin=col_isin,
-        col_quantity=col_quantity,
-        round=round_amount,
     )

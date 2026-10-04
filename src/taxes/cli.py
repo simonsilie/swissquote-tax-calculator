@@ -14,6 +14,7 @@ from taxes.reporting import (
     print_section,
     print_stock_sale_tax_note,
 )
+from taxes.result import Result
 from taxes.service import (
     DEFAULT_COLUMNS,
     DEFAULT_DIVIDEND_TYPES,
@@ -21,7 +22,6 @@ from taxes.service import (
     DEFAULT_PURCHASE_TYPES,
     DEFAULT_SALE_TYPES,
     DEFAULT_WITHHOLDING_TAX_TYPES,
-    TaxCalculationResult,
     TaxConfig,
     calculate_taxes,
 )
@@ -134,77 +134,81 @@ def parse_args() -> Namespace:
     return parser.parse_args()
 
 
-def _print_cli_output(result: TaxCalculationResult) -> None:
+def _print_cli_output(result: Result) -> None:
     rt = result
     wts = rt.withholding_tax_summary
     logger.info("1. Dividenden (Bruttoerträge vor Quellensteuer):")
     logger.info(
         "   Anlage KAP (Zeile 18 - Inländische Kapitalerträge, deutsche Aktien): "
-        f"{format_amount(rt.total_domestic_share_dividends, rt.round)}"
+        f"{format_amount(rt.dividends.total_domestic_shares, rt.config.round_amount)}"
     )
     logger.info(
         "   Anlage KAP (Zeile 19 - Ausländische Kapitalerträge, ausländische Aktien): "
-        f"{format_amount(rt.total_foreign_share_dividends, rt.round)}"
+        f"{format_amount(rt.dividends.total_foreign_shares, rt.config.round_amount)}"
     )
     logger.info(
         "   Anlage KAP-INV (Zeile 4 - Investmentfonds-/ETF-Ausschüttungen): "
-        f"{format_amount(rt.total_fund_dividends, rt.round)}"
+        f"{format_amount(rt.dividends.total_funds, rt.config.round_amount)}"
     )
-    zinsen_text = f"2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   {format_amount(rt.total_interest, rt.round)}"
+    zinsen_text = (
+        f"2. Anlage KAP (Zeile 19 - Ausländische Zinsen):   {format_amount(rt.interest.total, rt.config.round_amount)}"
+    )
     logger.info(zinsen_text)
-    if rt.col_withholding_tax_eur in rt.df.columns or not rt.withholding_tax_transactions.is_empty():
+    if rt.config.col_withholding_tax_eur in rt.df.columns or not rt.withholding_tax_transactions.is_empty():
         logger.info(
             "3. Anlage KAP (Zeile 41 - Anrechenbare ausländische Steuern): "
-            f"{format_amount(wts.foreign_creditable, rt.round)}"
+            f"{format_amount(wts.foreign_creditable, rt.config.round_amount)}"
         )
         for country, amount in wts.foreign_creditable_by_country:
-            logger.info(f"   {country}: {format_amount(amount, rt.round)}")
+            logger.info(f"   {country}: {format_amount(amount, rt.config.round_amount)}")
         logger.info(
             "   Davon Quellensteuer auf Dividenden: "
-            f"{format_amount(rt.dividend_tax_summary.foreign_creditable, rt.round)}"
+            f"{format_amount(rt.dividends.tax_summary.foreign_creditable, rt.config.round_amount)}"
         )
         logger.info(
-            f"   Davon Quellensteuer auf Zinsen: {format_amount(rt.interest_tax_summary.foreign_creditable, rt.round)}"
+            f"   Davon Quellensteuer auf Zinsen: {format_amount(rt.interest.tax_summary.foreign_creditable, rt.config.round_amount)}"
         )
         if wts.foreign_excess:
             logger.info(
-                f"   Nicht anrechenbarer ausländischer Steuerüberhang: {format_amount(wts.foreign_excess, rt.round)}"
+                f"   Nicht anrechenbarer ausländischer Steuerüberhang: {format_amount(wts.foreign_excess, rt.config.round_amount)}"
             )
         if wts.swiss_refundable:
             logger.info(
                 "   Davon Schweizer Verrechnungssteuer, separat rückforderbar: "
-                f"{format_amount(wts.swiss_refundable, rt.round)} "
+                f"{format_amount(wts.swiss_refundable, rt.config.round_amount)} "
                 "(Über eF85 direkt bei der Schweizer ESTV zurückzufordern)"
             )
         logger.info("4. Anlage KAP (Steueranrechnung):")
-        logger.info(f"   Zeile 37 - Kapitalertragsteuer: {format_amount(wts.domestic_capital_gains_tax, rt.round)}")
-        logger.info(f"   Zeile 38 - Solidaritätszuschlag: {format_amount(wts.domestic_solidarity_surcharge, rt.round)}")
         logger.info(
-            f"   Summe deutsche Kapitalertragsteuer einschließlich Soli: {format_amount(wts.domestic, rt.round)}"
+            f"   Zeile 37 - Kapitalertragsteuer: {format_amount(wts.domestic_capital_gains_tax, rt.config.round_amount)}"
+        )
+        logger.info(
+            f"   Zeile 38 - Solidaritätszuschlag: {format_amount(wts.domestic_solidarity_surcharge, rt.config.round_amount)}"
+        )
+        logger.info(
+            f"   Summe deutsche Kapitalertragsteuer einschließlich Soli: {format_amount(wts.domestic, rt.config.round_amount)}"
         )
         if wts.unclassified:
             logger.info(
                 "   Nicht in Zeile 41 (fehlende ISIN-Regel oder Bruttobetrag): "
-                f"{format_amount(wts.unclassified, rt.round)}"
+                f"{format_amount(wts.unclassified, rt.config.round_amount)}"
             )
-    stock_sales_text = (
-        f"5. Realisierte Gewinne/Verluste aus Aktienverkäufen: {format_amount(rt.total_stock_sales, rt.round)}"
-    )
+    stock_sales_text = f"5. Realisierte Gewinne/Verluste aus Aktienverkäufen: {format_amount(rt.stock_sales.total, rt.config.round_amount)}"
     logger.info(stock_sales_text)
-    print_stock_sale_tax_note(rt.stock_sales, "Gewinn_Verlust_EUR", rt.round)
+    print_stock_sale_tax_note(rt.stock_sales.transactions, "Gewinn_Verlust_EUR", rt.config.round_amount)
 
 
-def _print_cli_details(result: TaxCalculationResult) -> None:
+def _print_cli_details(result: Result) -> None:
     rt = result
     detail_cols: list[str] = [
-        rt.col_date,
-        rt.col_name,
-        rt.col_amount,
-        rt.col_currency,
-        rt.col_eur,
-        rt.col_gross_eur,
-        rt.col_withholding_tax,
-        rt.col_withholding_tax_eur,
+        rt.config.col_date,
+        rt.config.col_name,
+        rt.config.col_amount,
+        rt.config.col_currency,
+        rt.config.col_eur,
+        rt.config.col_gross_eur,
+        rt.config.col_withholding_tax,
+        rt.config.col_withholding_tax_eur,
         "Formular",
         "Quellenstaat",
         "Steuerbehandlung",
@@ -214,28 +218,32 @@ def _print_cli_details(result: TaxCalculationResult) -> None:
         "Solidaritaetszuschlag_EUR",
         "Nicht_klassifizierte_Steuer_EUR",
     ]
-    print_section("Details Dividenden", rt.dividends, detail_cols, rt.col_gross_eur, rt.round)
-    print_section("Details Zinsen", rt.interest, detail_cols, rt.col_gross_eur, rt.round)
+    print_section(
+        "Details Dividenden", rt.dividends.transactions, detail_cols, rt.config.col_gross_eur, rt.config.round_amount
+    )
+    print_section(
+        "Details Zinsen", rt.interest.transactions, detail_cols, rt.config.col_gross_eur, rt.config.round_amount
+    )
     print_section(
         "Details separate Quellensteuer-Buchungen",
         rt.withholding_tax_transactions,
         detail_cols,
-        rt.col_eur,
-        rt.round,
+        rt.config.col_eur,
+        rt.config.round_amount,
     )
     print_section(
         "Details Aktienverkäufe",
-        rt.stock_sales,
+        rt.stock_sales.transactions,
         [
-            rt.col_date,
-            rt.col_isin,
-            rt.col_quantity,
+            rt.config.col_date,
+            rt.config.col_isin,
+            rt.config.col_quantity,
             "Verkaufserloes_EUR",
             "Anschaffungskosten_EUR",
             "Gewinn_Verlust_EUR",
         ],
         "Gewinn_Verlust_EUR",
-        rt.round,
+        rt.config.round_amount,
     )
 
 
@@ -290,22 +298,28 @@ def main() -> None:
         _print_cli_details(result)
 
     if args.output:
-        export_details(result.dividends, result.interest, result.stock_sales, args.output, args.sep)
+        export_details(
+            result.dividends.transactions,
+            result.interest.transactions,
+            result.stock_sales.transactions,
+            args.output,
+            args.sep,
+        )
         logger.info(f"\nDetails nach '{args.output}' exportiert")
 
     if args.export_summary:
         export_elster_mapping(
             output_dir=args.export_dir,
             tax_year=result.tax_year,
-            total_domestic_share_dividends=result.total_domestic_share_dividends,
-            total_foreign_share_dividends=result.total_foreign_share_dividends,
-            total_interest=result.total_interest,
-            total_fund_dividends=result.total_fund_dividends,
+            total_domestic_share_dividends=result.dividends.total_domestic_shares,
+            total_foreign_share_dividends=result.dividends.total_foreign_shares,
+            total_interest=result.interest.total,
+            total_fund_dividends=result.dividends.total_funds,
             withholding_tax_summary=result.withholding_tax_summary,
-            stock_gains=result.stock_gains,
-            stock_losses=result.stock_losses,
-            fund_dividends=result.fund_dividends,
-            round_amount=result.round,
+            stock_gains=result.stock_sales.gains,
+            stock_losses=result.stock_sales.losses,
+            fund_dividends=result.dividends.funds,
+            round_amount=result.config.round_amount,
         )
 
 
