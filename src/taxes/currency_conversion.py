@@ -1,11 +1,11 @@
 import polars as pl
 
-from taxes.fx_rates import DailyFXRateFetcher
+from taxes.fx_rates import FXRateFetcher
 
 
 def apply_fx_rates_daily(
     dataframe: pl.DataFrame,
-    fetcher: DailyFXRateFetcher,
+    fetcher: FXRateFetcher,
     date_col: str,
     currency_col: str,
     amount_col: str,

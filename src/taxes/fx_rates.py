@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from datetime import date
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional, Protocol, Sequence
 from urllib.error import URLError
 
 from loguru import logger
@@ -25,6 +25,19 @@ FALLBACK_FX_RATES: dict[int, dict[str, float]] = {
 DEFAULT_CURRENCIES: tuple[str, ...] = ("USD", "CHF", "EUR")
 CACHE_DIR = Path.home() / ".cache" / "swissquote-tax"
 CACHE_FILE = CACHE_DIR / "fx_rates.json"
+
+
+class FXRateFetcher(Protocol):
+    """Rate source required by the conversion pipeline.
+
+    Structural type so tests and callers can inject lightweight fakes
+    without inheriting from DailyFXRateFetcher.
+    """
+
+    def get_rate(self, target_date: date, currency: str) -> float:
+        """Return the EUR conversion rate for one unit of ``currency``."""
+        ...
+
 
 # Retry configuration for transient API failures.
 API_MAX_ATTEMPTS = 3

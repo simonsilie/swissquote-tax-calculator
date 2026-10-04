@@ -5,7 +5,7 @@ import polars as pl
 from loguru import logger
 
 from taxes.currency_conversion import apply_fx_rates_daily
-from taxes.fx_rates import DailyFXRateFetcher
+from taxes.fx_rates import DailyFXRateFetcher, FXRateFetcher
 from taxes.stock_sales import calculate_realized_stock_results
 from taxes.transactions import detect_tax_year, load_csv, validate_data
 from taxes.withholding_tax import (
@@ -49,6 +49,10 @@ class TaxConfig:
     output options so that ``calculate_taxes`` takes a single object instead
     of 23 loose parameters. Field defaults mirror the Swissquote standard
     export; the CLI passes user overrides into a fresh instance.
+
+    ``fx_fetcher`` allows injecting an exchange-rate source (dependency
+    injection). When omitted, a real ``DailyFXRateFetcher`` is constructed
+    lazily so tests can supply a fake without touching the network.
     """
 
     csv_file: Path
@@ -73,6 +77,7 @@ class TaxConfig:
     col_gross_eur: str = DEFAULT_COLUMNS["gross_amount_eur"]
     round_amount: bool = False
     withholding_tax_rules_path: Path | None = None
+    fx_fetcher: FXRateFetcher | None = None
 
 
 @dataclass
@@ -160,7 +165,7 @@ def calculate_taxes(config: TaxConfig) -> TaxCalculationResult:
     resolved_tax_year: int = detect_tax_year(df, col_date, tax_year)
     validate_data(df, col_amount, col_currency, col_type)
 
-    fetcher = DailyFXRateFetcher()
+    fetcher = config.fx_fetcher if config.fx_fetcher is not None else DailyFXRateFetcher()
 
     logger.info(f"=== AUSWERTUNG FÜR STEUERJAHR {resolved_tax_year} ===")
     df = apply_fx_rates_daily(df, fetcher, col_date, col_currency, col_amount, col_eur)
