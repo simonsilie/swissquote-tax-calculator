@@ -153,6 +153,33 @@ def calculate_taxes(config: TaxConfig) -> Result:
     dividends: pl.DataFrame = tax_year_df.filter(pl.col(col_type).is_in(dividend_types))
     interest: pl.DataFrame = tax_year_df.filter(pl.col(col_type).is_in(interest_types))
     withholding_tax_transactions: pl.DataFrame = tax_year_df.filter(pl.col(col_type).is_in(withholding_tax_types))
+
+    # Sales of securities explicitly flagged ``instrument = "fund"`` need
+    # fund-specific treatment (Anlage KAP-INV, Teilfreistellung); reporting
+    # them as ordinary Aktiengewinne would be wrong, so they are rejected.
+    if col_isin in df.columns:
+        sales = df.filter(pl.col(col_type).is_in(sale_types))
+        if not sales.is_empty():
+            fund_sale_isins = (
+                withholding_tax_rules.get_rules_for_isins(sales[col_isin])
+                .filter(pl.col("instrument") == "fund")
+                .get_column("isin")
+                .unique()
+                .drop_nulls()
+                .sort()
+                .to_list()
+            )
+        else:
+            fund_sale_isins = []
+    else:
+        fund_sale_isins = []
+    if fund_sale_isins:
+        raise ValueError(
+            "Verkäufe von Investmentfonds/ETFs (instrument = \"fund\") werden nicht unterstützt: "
+            + ", ".join(fund_sale_isins)
+            + ". Realisierte Fondsgewinne müssen separat ermittelt werden."
+        )
+
     try:
         stock_sales = calculate_realized_stock_results(
             df,

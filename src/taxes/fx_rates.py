@@ -108,12 +108,16 @@ def _fetch_with_retry(
 class DailyFXRateFetcher:
     """Fetches daily EUR exchange rates with caching and multi-tier fallback.
 
-    Fallback chain: cached rate → Frankfurter daily API → hardcoded EZB approximate rates.
+    Fallback chain: cached rate → Frankfurter daily API → hardcoded EZB approximate
+    rates. Fallback approximations are kept in memory only and are never written to
+    the persistent cache, so a later run (or a recovered connection) can still fetch
+    the real daily rate from the API.
     """
 
     def __init__(self, cache_file: Optional[Path] = None) -> None:
         self.cache_file = cache_file or CACHE_FILE
         self._cache: dict[str, dict[str, float]] = {}
+        self._fallback_cache: dict[str, dict[str, float]] = {}
         self._offline = False
         raw = os.environ.get("SWISSQUOTE_TAX_OFFLINE", "")
         if raw.lower() in ("1", "true", "yes"):
@@ -196,6 +200,10 @@ class DailyFXRateFetcher:
         if date_str in self._cache and currency in self._cache[date_str]:
             return self._cache[date_str][currency]
 
+        if date_str in self._fallback_cache and currency in self._fallback_cache[date_str]:
+            # Reuse the (approximate) fallback chosen earlier in this run.
+            return self._fallback_cache[date_str][currency]
+
         daily_rates = self._fetch_daily_from_api(target_date, DEFAULT_CURRENCIES)
         if daily_rates:
             self._cache[date_str] = daily_rates
@@ -203,18 +211,16 @@ class DailyFXRateFetcher:
             if currency in daily_rates:
                 return daily_rates[currency]
 
-        fallback = self.get_fallback_rates(year)
-        if date_str not in self._cache:
-            self._cache[date_str] = {}
-        rate = fallback.get(currency)
-        if rate is None:
+        fallback_rate = self.get_fallback_rates(year).get(currency)
+        if fallback_rate is None:
             logger.warning(
                 f"Unknown currency '{currency}' for {date_str} — no fallback rate, assuming 1:1",
             )
             return 1.0
-        self._cache[date_str][currency] = rate
-        self._save_cache()
-        return rate
+        # Keep the approximation in memory only: persisting it would hide real
+        # daily API rates from every later run, even after connectivity recovers.
+        self._fallback_cache.setdefault(date_str, {})[currency] = fallback_rate
+        return fallback_rate
 
     def get_rates_for_date(self, target_date: date) -> dict[str, float]:
         result = {}

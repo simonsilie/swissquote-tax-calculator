@@ -290,6 +290,36 @@ def test_invalid_number_format_is_reported_with_row_numbers() -> None:
     assert "Zeile 4: 'abc'" in result.stderr
 
 
+def test_invalid_date_diagnostics_cover_six_rows() -> None:
+    """More than five invalid dates still pair every line number with its value."""
+    invalid_rows = "\n".join(f"not-a-date-{n};Dividende;10.00;EUR" for n in range(1, 7))
+    csv_content = f"""Datum;Transaktionen;Nettobetrag;Währung
+{invalid_rows}
+"""
+
+    result = run_cli(csv_content, ["--no-details"], environment=OFFLINE)
+
+    assert result.returncode != 0
+    assert "6 betroffene Zeilen" in result.stderr
+    for csv_line, sample in zip(range(2, 8), range(1, 7), strict=True):
+        assert f"Zeile {csv_line}: 'not-a-date-{sample}'" in result.stderr
+
+
+def test_invalid_number_diagnostics_cover_six_rows() -> None:
+    """More than five unparseable amounts still pair every line number with its value."""
+    invalid_rows = "\n".join(f"31-12-2025 15:57:09;Dividende;junk-{n};EUR" for n in range(1, 7))
+    csv_content = f"""Datum;Transaktionen;Nettobetrag;Währung
+{invalid_rows}
+"""
+
+    result = run_cli(csv_content, ["--no-details"], environment=OFFLINE)
+
+    assert result.returncode != 0
+    assert "6 betroffene Zeilen" in result.stderr
+    for csv_line, sample in zip(range(2, 8), range(1, 7), strict=True):
+        assert f"Zeile {csv_line}: 'junk-{sample}'" in result.stderr
+
+
 def test_missing_values_are_reported_with_row_numbers() -> None:
     """Missing mandatory values reference the affected CSV line numbers."""
     csv_content = """Datum;Transaktionen;Nettobetrag;Währung

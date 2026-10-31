@@ -55,7 +55,7 @@ def _generate_markdown(
         "",
     ]
 
-    foreign_capital_income = total_foreign_share_dividends + total_interest
+    foreign_capital_income = total_foreign_share_dividends + total_interest + stock_gains
 
     lines.extend(
         [
@@ -72,6 +72,13 @@ def _generate_markdown(
             "",
         ]
     )
+    if stock_gains > 0:
+        lines.extend(
+            [
+                f"  + Aktiengewinne {_fmt(stock_gains, round_amount)} (Zeile 20)",
+                "",
+            ]
+        )
 
     if (
         withholding_tax_summary.domestic_capital_gains_tax > 0

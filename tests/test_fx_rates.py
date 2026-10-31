@@ -1,4 +1,3 @@
-import json
 import tempfile
 from pathlib import Path
 from datetime import date
@@ -25,12 +24,28 @@ def test_daily_fx_rate_fetcher_cache() -> None:
             rate = fetcher.get_rate(date(2020, 1, 1), "USD")
             assert rate == 1.1421  # fallback for 2020
 
-        # Test cache file was created
-        assert cache_file.exists()
-        with open(cache_file) as f:
-            cache = json.load(f)
-        assert "2020-01-01" in cache
-        assert cache["2020-01-01"]["USD"] == 1.1421
+        # Fallback approximations are not persisted as authoritative daily rates
+        assert not cache_file.exists()
+
+
+def test_fallback_rate_does_not_block_a_later_api_request() -> None:
+    """A fallback approximation stays out of the cache so recovery hits the API again."""
+    from taxes.fx_rates import DailyFXRateFetcher
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache_file = Path(tmpdir) / "fx_rates.json"
+
+        first = DailyFXRateFetcher(cache_file=cache_file)
+        with patch.object(first, "_fetch_daily_from_api", return_value=None):
+            assert first.get_rate(date(2025, 6, 2), "USD") == 1.05
+
+        # A new fetcher (fresh process) must still ask the API for the real rate
+        second = DailyFXRateFetcher(cache_file=cache_file)
+        with patch.object(
+            second, "_fetch_daily_from_api", return_value={"USD": 1.0801, "CHF": 0.94, "EUR": 1.0}
+        ) as api:
+            assert second.get_rate(date(2025, 6, 2), "USD") == 1.0801
+            assert api.called
 
 
 def test_daily_fx_rate_fetcher_fallback_chain() -> None:

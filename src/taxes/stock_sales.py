@@ -89,8 +89,14 @@ def calculate_realized_stock_results(
         while remaining_quantity > QUANTITY_ZERO and lots:
             lot = lots[0]
             matched_quantity = min(remaining_quantity, lot["quantity"])
-            # cost_eur is total cost for the lot; allocate proportionally
-            acquisition_cost_eur += lot["cost_eur"] * (matched_quantity / lot["quantity"])
+            # cost_eur is total cost for the lot. Allocate rounded cents once and
+            # subtract exactly that allocation so the lot's total cost is conserved
+            # and a later sale cannot reuse it.
+            matched_cost = _round_decimal(
+                lot["cost_eur"] * (matched_quantity / lot["quantity"]), AMOUNT_PRECISION
+            )
+            acquisition_cost_eur += matched_cost
+            lot["cost_eur"] = lot["cost_eur"] - matched_cost
             lot["quantity"] = _round_decimal(lot["quantity"] - matched_quantity)
             remaining_quantity = _round_decimal(remaining_quantity - matched_quantity)
             if lot["quantity"] <= QUANTITY_ZERO:

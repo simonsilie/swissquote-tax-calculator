@@ -97,8 +97,8 @@ max_creditable_rate = 0.15
         load_security_tax_rules(rules_file)
 
 
-def test_default_foreign_rule_resolution() -> None:
-    """Unmapped ISINs default to DE domestic or foreign tax with 15% creditable rate."""
+def test_default_rule_resolution() -> None:
+    """DE ISINs default to domestic; every other unmapped ISIN stays unclassified."""
     rules = SecurityTaxRules()
 
     de_rule = rules.get("DE0007164600")
@@ -107,11 +107,31 @@ def test_default_foreign_rule_resolution() -> None:
     assert de_rule.tax_treatment == "domestic"
     assert de_rule.max_creditable_rate == 0.0
 
-    us_rule = rules.get("US0378331005")
-    assert us_rule is not None
-    assert us_rule.source_country == "US"
-    assert us_rule.tax_treatment == "foreign"
-    assert us_rule.max_creditable_rate == 0.15
+    assert rules.get("US0378331005") is None
+
+
+def test_unconfigured_isin_costs_are_not_credited() -> None:
+    """Without a rule, foreign costs stay unclassified instead of a 15% credit."""
+    dataframe = pl.DataFrame(
+        {
+            "ISIN": ["GB0000000001"],
+            "Nettobetrag_EUR": [66.67],
+            "Kosten_EUR": [-10.0],
+        }
+    )
+    rules = SecurityTaxRules()
+
+    classified, summary = classify_embedded_withholding_taxes(
+        dataframe,
+        rules,
+        "ISIN",
+        "Nettobetrag_EUR",
+        "Kosten_EUR",
+    )
+
+    assert summary.foreign_creditable == 0.0
+    assert summary.unclassified == 10.0
+    assert classified["Steuerbehandlung"].to_list() == ["unclassified"]
 
 
 def test_classify_embedded_withholding_taxes_applies_the_credit_limit() -> None:

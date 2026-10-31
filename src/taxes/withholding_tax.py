@@ -60,15 +60,16 @@ class SecurityTaxRules(dict[str, SecurityTaxRule]):
         rule = self._resolve_rule(key)
         if rule is not None:
             return rule
-        logger.debug(f"ISIN {key} without explicit rule and no resolvable ISIN prefix")
+        logger.debug(f"ISIN {key} without explicit rule — stays unclassified")
         return default
 
     def _resolve_rule(self, isin: str) -> SecurityTaxRule | None:
         """Resolve the rule for a single ISIN.
 
-        Lookup order: exact ISIN rule, two-letter ISIN prefix (country) rule,
-        then built-in defaults (DE domestic, otherwise foreign with 15%
-        creditable rate).
+        Lookup order: exact ISIN rule, then the two-letter ISIN prefix
+        (country) rule. German ISINs fall back to domestic treatment; every
+        other unconfigured ISIN stays unclassified — its ``Kosten`` must not
+        be treated as creditable foreign tax without an explicit rule.
         """
         if not isin:
             return None
@@ -77,11 +78,8 @@ class SecurityTaxRules(dict[str, SecurityTaxRule]):
         if rule is not None:
             return rule
         prefix = isin_upper[:2]
-        if len(prefix) == 2 and prefix.isalpha():
-            if prefix == "DE":
-                return SecurityTaxRule(source_country="DE", tax_treatment="domestic", max_creditable_rate=0.0)
-            logger.debug(f"ISIN {isin} without explicit rule — classified as foreign {prefix} stock (15% creditable)")
-            return SecurityTaxRule(source_country=prefix, tax_treatment="foreign", max_creditable_rate=0.15)
+        if len(prefix) == 2 and prefix.isalpha() and prefix == "DE":
+            return SecurityTaxRule(source_country="DE", tax_treatment="domestic", max_creditable_rate=0.0)
         return None
 
     def get_rules_for_isins(self, isins: pl.Series, isin_col_name: str = "isin") -> pl.DataFrame:

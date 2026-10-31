@@ -7,7 +7,6 @@ from loguru import logger
 from taxes.fx_rates import FALLBACK_FX_RATES
 
 DATE_FORMAT = "%d-%m-%Y %H:%M:%S"
-_SAMPLE_LIMIT = 5
 _ROW_NUMBER_LIMIT = 10
 # CSV line numbering: line 1 is the header, data rows start at line 2.
 _ROW_NUMBER_OFFSET = 2
@@ -73,9 +72,9 @@ def _validate_and_parse_dates(dataframe: pl.DataFrame, date_col: str) -> pl.Data
 
     invalid_mask = parsed_dates.is_null()
     if invalid_mask.any():
-        raw_values = dataframe.filter(invalid_mask).get_column(date_col).head(_SAMPLE_LIMIT).to_list()
+        raw_values = dataframe.filter(invalid_mask).get_column(date_col).head(_ROW_NUMBER_LIMIT).to_list()
         total = int(invalid_mask.sum())
-        entries = list(zip(_row_numbers(dataframe, invalid_mask), raw_values, strict=True))
+        entries = list(zip(_row_numbers(dataframe, invalid_mask, limit=_ROW_NUMBER_LIMIT), raw_values, strict=True))
         sys.exit(
             f"Fehler: Ungültige Datumsformate in Spalte '{date_col}' "
             f"(erwartet '{DATE_FORMAT}', {total} betroffene Zeilen):\n"
@@ -121,11 +120,11 @@ def _parse_numeric_column(dataframe: pl.DataFrame, column: str) -> pl.DataFrame:
         raw_values = (
             dataframe.filter(invalid_mask)
             .get_column(column)
-            .head(_SAMPLE_LIMIT)
+            .head(_ROW_NUMBER_LIMIT)
             .to_list()
         )
         total = int(invalid_mask.sum())
-        entries = list(zip(_row_numbers(dataframe, invalid_mask), raw_values, strict=True))
+        entries = list(zip(_row_numbers(dataframe, invalid_mask, limit=_ROW_NUMBER_LIMIT), raw_values, strict=True))
         sys.exit(
             f"Fehler: Ungültige Zahlenformate in Spalte '{column}' "
             f"({total} betroffene Zeilen):\n{_format_numbered_rows(entries, total)}"
