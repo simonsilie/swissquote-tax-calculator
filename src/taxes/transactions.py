@@ -117,12 +117,7 @@ def _parse_numeric_column(dataframe: pl.DataFrame, column: str) -> pl.DataFrame:
         & (dataframe.get_column(column).str.strip_chars() != "")
     )
     if invalid_mask.any():
-        raw_values = (
-            dataframe.filter(invalid_mask)
-            .get_column(column)
-            .head(_ROW_NUMBER_LIMIT)
-            .to_list()
-        )
+        raw_values = dataframe.filter(invalid_mask).get_column(column).head(_ROW_NUMBER_LIMIT).to_list()
         total = int(invalid_mask.sum())
         entries = list(zip(_row_numbers(dataframe, invalid_mask, limit=_ROW_NUMBER_LIMIT), raw_values, strict=True))
         sys.exit(

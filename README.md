@@ -2,6 +2,26 @@
 
 Python-Skript zur Auswertung von Swissquote-Transaktions-CSVs für die deutsche Steuererklärung (Anlage KAP / KAP-INV).
 
+## Entwicklung
+
+Für Python-Code und Tests gelten die [Python coding guidelines](docs/python-coding-guidelines.md),
+übernommen aus dem Repository `home-automation`.
+
+```bash
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked pyrefly check
+uv run --locked pytest -m "not integration"
+uv run --locked pytest -m integration
+# Beide Testsuiten gemeinsam
+uv run --locked pytest
+```
+
+Integrationstests verwenden temporäre Verzeichnisse und Offline-Wechselkurse bzw. injizierte
+Netzwerkantworten. Sie benötigen weder persönliche Konfiguration noch externe Dienste.
+Exporttests verwenden einen Fake für den nativen PDF-Renderer; die tatsächliche PDF-Darstellung
+wird von diesen Tests nicht geprüft.
+
 ## Features
 
 - **Automatische Jahreserkennung** aus den Transaktionsdaten

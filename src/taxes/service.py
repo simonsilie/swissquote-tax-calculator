@@ -175,7 +175,7 @@ def calculate_taxes(config: TaxConfig) -> Result:
         fund_sale_isins = []
     if fund_sale_isins:
         raise ValueError(
-            "Verkäufe von Investmentfonds/ETFs (instrument = \"fund\") werden nicht unterstützt: "
+            'Verkäufe von Investmentfonds/ETFs (instrument = "fund") werden nicht unterstützt: '
             + ", ".join(fund_sale_isins)
             + ". Realisierte Fondsgewinne müssen separat ermittelt werden."
         )

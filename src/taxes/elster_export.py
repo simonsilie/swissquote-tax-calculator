@@ -1,8 +1,8 @@
+from collections.abc import Callable
 from pathlib import Path
 
 import markdown
 import polars as pl
-import weasyprint
 from loguru import logger
 
 from taxes.withholding_tax import TEILFREISTELLUNG_RATES, WithholdingTaxSummary
@@ -262,11 +262,19 @@ def _generate_markdown(
     return md_path
 
 
-def _generate_pdf(md_path: Path) -> Path | None:
+def _render_pdf(html_content: str, pdf_path: Path) -> None:
+    """Native PDF rendering boundary, loaded only when a PDF is requested."""
+    import weasyprint
+
+    weasyprint.HTML(string=html_content).write_pdf(pdf_path)
+
+
+def _generate_pdf(md_path: Path, pdf_renderer: Callable[[str, Path], None] | None = None) -> Path | None:
     html_content = _md_to_html(md_path.read_text(encoding="utf-8"))
     pdf_path = md_path.with_suffix(".pdf")
     try:
-        weasyprint.HTML(string=html_content).write_pdf(pdf_path)
+        renderer = pdf_renderer if pdf_renderer is not None else _render_pdf
+        renderer(html_content, pdf_path)
         logger.info(f"ELSTER mapping PDF exported to {pdf_path}")
         return pdf_path
     except Exception as exc:
@@ -314,11 +322,14 @@ def export_elster_mapping(
     stock_losses: float,
     fund_dividends: pl.DataFrame,
     round_amount: bool,
+    *,
+    pdf_renderer: Callable[[str, Path], None] | None = None,
 ) -> Path:
     """Generate an ELSTER form mapping guide as Markdown and optionally PDF.
 
     The output file ``tax_summary_elster.md`` maps each computed amount to its
     exact form and row number in Anlage KAP, Anlage KAP-INV, and Swiss eF85 refund.
+    ``pdf_renderer`` can replace the native renderer without changing Markdown generation.
     """
     md_path = _generate_markdown(
         output_dir=output_dir,
@@ -334,6 +345,6 @@ def export_elster_mapping(
         round_amount=round_amount,
     )
 
-    _generate_pdf(md_path)
+    _generate_pdf(md_path, pdf_renderer)
 
     return md_path

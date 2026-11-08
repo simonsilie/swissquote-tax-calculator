@@ -1,196 +1,183 @@
-import tempfile
-from pathlib import Path
 from datetime import date
-from unittest.mock import patch
+from email.message import Message
+from random import Random
+from urllib.error import HTTPError, URLError
+
+import pytest
+
+from taxes.fx_rates import DailyFXRateFetcher, _fetch_with_retry
+from tests.fakes import FakeJsonAPI, FakeUrlOpener, MemoryFXRateCache
 
 
-# Get the project root directory
-PROJECT_ROOT = Path(__file__).parent.parent
+def test_eur_rate_needs_no_api_request() -> None:
+    # Arrange
+    fetcher = DailyFXRateFetcher(cache=MemoryFXRateCache(), fetch_json=FakeJsonAPI(), offline=False)
+
+    # Act
+    rate = fetcher.get_rate(date(2024, 1, 15), "EUR")
+
+    # Assert
+    assert rate == 1.0
 
 
-def test_daily_fx_rate_fetcher_cache() -> None:
-    """Test that DailyFXRateFetcher caches rates correctly."""
-    from taxes.fx_rates import DailyFXRateFetcher
+def test_daily_rates_are_persisted_and_reused() -> None:
+    # Arrange
+    cache = MemoryFXRateCache()
+    fetcher = DailyFXRateFetcher(
+        cache=cache, fetch_json=FakeJsonAPI({"rates": {"USD": 1.09, "CHF": 0.94}}), offline=False
+    )
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cache_file = Path(tmpdir) / "fx_rates.json"
-        fetcher = DailyFXRateFetcher(cache_file=cache_file)
+    # Act
+    rates = fetcher.get_rates_for_date(date(2024, 6, 15))
+    cached = DailyFXRateFetcher(cache=cache, fetch_json=FakeJsonAPI(), offline=False)
+    reloaded_rates = cached.get_rates_for_date(date(2024, 6, 15))
 
-        # Test EUR rate is always 1.0
-        assert fetcher.get_rate(date(2024, 1, 15), "EUR") == 1.0
+    # Assert
+    assert rates == {"USD": 1.09, "CHF": 0.94, "EUR": 1.0}
+    assert reloaded_rates == rates
+    assert cache.rates == {"2024-06-15": rates}
 
-        # Test fallback rates for unknown dates (mock daily API to fail)
-        with patch.object(fetcher, "_fetch_daily_from_api", return_value=None):
-            rate = fetcher.get_rate(date(2020, 1, 1), "USD")
-            assert rate == 1.1421  # fallback for 2020
 
-        # Fallback approximations are not persisted as authoritative daily rates
-        assert not cache_file.exists()
+@pytest.mark.parametrize(("year", "expected"), [(2020, 1.1421), (2024, 1.0825)])
+def test_fallback_rates_stay_out_of_persistent_cache(year: int, expected: float) -> None:
+    # Arrange
+    cache = MemoryFXRateCache()
+    fetcher = DailyFXRateFetcher(cache=cache, fetch_json=FakeJsonAPI(None), offline=False)
+
+    # Act
+    rate = fetcher.get_rate(date(year, 1, 1), "USD")
+    repeated_rate = fetcher.get_rate(date(year, 1, 1), "USD")
+
+    # Assert
+    assert rate == expected
+    assert repeated_rate == expected
+    assert cache.rates == {}
 
 
 def test_fallback_rate_does_not_block_a_later_api_request() -> None:
-    """A fallback approximation stays out of the cache so recovery hits the API again."""
-    from taxes.fx_rates import DailyFXRateFetcher
+    # Arrange
+    cache = MemoryFXRateCache()
+    first = DailyFXRateFetcher(cache=cache, fetch_json=FakeJsonAPI(None), offline=False)
+    first.get_rate(date(2025, 6, 2), "USD")
+    second = DailyFXRateFetcher(
+        cache=cache, fetch_json=FakeJsonAPI({"rates": {"USD": 1.0801, "CHF": 0.94}}), offline=False
+    )
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cache_file = Path(tmpdir) / "fx_rates.json"
+    # Act
+    rate = second.get_rate(date(2025, 6, 2), "USD")
 
-        first = DailyFXRateFetcher(cache_file=cache_file)
-        with patch.object(first, "_fetch_daily_from_api", return_value=None):
-            assert first.get_rate(date(2025, 6, 2), "USD") == 1.05
-
-        # A new fetcher (fresh process) must still ask the API for the real rate
-        second = DailyFXRateFetcher(cache_file=cache_file)
-        with patch.object(
-            second, "_fetch_daily_from_api", return_value={"USD": 1.0801, "CHF": 0.94, "EUR": 1.0}
-        ) as api:
-            assert second.get_rate(date(2025, 6, 2), "USD") == 1.0801
-            assert api.called
+    # Assert
+    assert rate == 1.0801
+    assert cache.rates["2025-06-02"]["USD"] == 1.0801
 
 
-def test_daily_fx_rate_fetcher_fallback_chain() -> None:
-    """Test the fallback chain: daily API -> fallback table."""
-    from taxes.fx_rates import DailyFXRateFetcher
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"rates": {"CHF": 0.9394, "USD": 1.03}},
+        {"rates": {"2025-01-15": {"CHF": 0.9394, "USD": 1.03}}},
+    ],
+)
+def test_daily_api_response_shapes(response: dict[object, object]) -> None:
+    # Arrange
+    fetcher = DailyFXRateFetcher(cache=MemoryFXRateCache(), fetch_json=FakeJsonAPI(response), offline=False)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cache_file = Path(tmpdir) / "fx_rates.json"
-        fetcher = DailyFXRateFetcher(cache_file=cache_file)
+    # Act
+    rates = fetcher.get_rates_for_date(date(2025, 1, 15))
 
-        # Mock the daily API to fail, should use fallback
-        with patch.object(fetcher, "_fetch_daily_from_api", return_value=None):
-            rate = fetcher.get_rate(date(2024, 6, 15), "USD")
-            assert rate == 1.0825  # 2024 fallback
-
-
-def test_daily_fx_rate_fetcher_daily_api_success() -> None:
-    """Test that daily API rate is used when available."""
-    from taxes.fx_rates import DailyFXRateFetcher
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cache_file = Path(tmpdir) / "fx_rates.json"
-        fetcher = DailyFXRateFetcher(cache_file=cache_file)
-
-        # Mock daily API to succeed
-        with patch.object(fetcher, "_fetch_daily_from_api", return_value={"USD": 1.09, "CHF": 0.94, "EUR": 1.0}):
-            rate = fetcher.get_rate(date(2024, 6, 15), "USD")
-            assert rate == 1.09
-
-
-def test_fetch_daily_from_api_parses_single_date_response() -> None:
-    """Test Frankfurter's direct rate shape for a single-date query."""
-    from taxes.fx_rates import DailyFXRateFetcher
-
-    class FakeResponse:
-        def __enter__(self) -> "FakeResponse":
-            return self
-
-        def __exit__(self, exc_type: object, exc_value: object, traceback: object) -> None:
-            return None
-
-        def read(self) -> bytes:
-            return b'{"amount":1.0,"base":"EUR","date":"2025-01-15","rates":{"CHF":0.9394,"USD":1.03}}'
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        fetcher = DailyFXRateFetcher(cache_file=Path(tmpdir) / "fx_rates.json")
-        with patch("urllib.request.urlopen", return_value=FakeResponse()):
-            rates = fetcher._fetch_daily_from_api(date(2025, 1, 15), ["USD", "CHF", "EUR"])
-
+    # Assert
     assert rates == {"EUR": 1.0, "USD": 1.03, "CHF": 0.9394}
 
 
-def test_get_rates_for_date() -> None:
-    """Test get_rates_for_date returns all currencies."""
-    from taxes.fx_rates import DailyFXRateFetcher
+@pytest.mark.parametrize("response", [{}, {"rates": []}, {"rates": {"JPY": 150.0}}])
+def test_unusable_api_responses_use_fallback(response: dict[object, object]) -> None:
+    # Arrange
+    cache = MemoryFXRateCache()
+    fetcher = DailyFXRateFetcher(cache=cache, fetch_json=FakeJsonAPI(response), offline=False)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cache_file = Path(tmpdir) / "fx_rates.json"
-        fetcher = DailyFXRateFetcher(cache_file=cache_file)
+    # Act
+    rate = fetcher.get_rate(date(2025, 1, 15), "USD")
 
-        with patch.object(fetcher, "_fetch_daily_from_api", return_value={"USD": 1.09, "CHF": 0.94, "EUR": 1.0}):
-            rates = fetcher.get_rates_for_date(date(2024, 6, 15))
-            assert rates["USD"] == 1.09
-            assert rates["CHF"] == 0.94
-            assert rates["EUR"] == 1.0
+    # Assert
+    assert rate == 1.05
+    assert cache.rates == {}
+
+
+def test_offline_mode_uses_fallback_even_with_cached_daily_rates() -> None:
+    # Arrange
+    fetcher = DailyFXRateFetcher(
+        cache=MemoryFXRateCache({"2025-01-15": {"USD": 1.10}}), fetch_json=FakeJsonAPI(), offline=True
+    )
+
+    # Act
+    rate = fetcher.get_rate(date(2025, 1, 15), "USD")
+
+    # Assert
+    assert rate == 1.05
 
 
 def test_fetch_with_retry_succeeds_after_transient_failures() -> None:
-    """Transient failures are retried with backoff until the API responds."""
-    from taxes import fx_rates
+    # Arrange
+    opener = FakeUrlOpener(URLError("connection reset"), b"{truncated", b'{"rates": {"USD": 1.05}}')
+    delays: list[float] = []
+    random = Random(0)
+    expected_random = Random(0)
 
-    responses = [
-        fx_rates.URLError("connection reset"),
-        fx_rates.json.JSONDecodeError("truncated body", "", 0),
-        '{"rates": {"USD": 1.05}}',
-    ]
+    # Act
+    data = _fetch_with_retry(
+        "https://api.frankfurter.dev/v1/2025-01-15",
+        open_url=opener,
+        sleep=delays.append,
+        jitter=random.uniform,
+    )
 
-    def fake_urlopen(request: object, timeout: float = 0) -> object:
-        outcome = responses.pop(0)
-        if isinstance(outcome, Exception):
-            raise outcome
-
-        class FakeResponse:
-            def __enter__(self) -> "FakeResponse":
-                return self
-
-            def __exit__(self, *args: object) -> None:
-                return None
-
-            def read(self) -> bytes:
-                return outcome.encode()  # type: ignore[attr-defined]
-
-        return FakeResponse()
-
-    with patch.object(fx_rates.time, "sleep") as mock_sleep, patch.object(
-        fx_rates.urllib.request, "urlopen", side_effect=fake_urlopen
-    ):
-        data = fx_rates._fetch_with_retry("https://api.frankfurter.dev/v1/2025-01-15")
-
+    # Assert
     assert data == {"rates": {"USD": 1.05}}
-    assert mock_sleep.call_count == 2  # backoff after each failed attempt
+    assert delays == [1.0 + expected_random.uniform(0, 0.5), 2.0 + expected_random.uniform(0, 1.0)]
 
 
-def test_fetch_with_retry_gives_up_after_max_attempts() -> None:
-    """Persistent failures return None after exhausting all attempts."""
-    from taxes import fx_rates
+@pytest.mark.parametrize("status", [None, 408, 429, 503])
+def test_fetch_with_retry_gives_up_after_max_attempts(status: int | None) -> None:
+    # Arrange
+    error = (
+        URLError("network down")
+        if status is None
+        else HTTPError("https://example.test", status, "error", Message(), None)
+    )
+    opener = FakeUrlOpener(error, error, error)
+    delays: list[float] = []
 
-    with patch.object(fx_rates.time, "sleep") as mock_sleep, patch.object(
-        fx_rates.urllib.request, "urlopen", side_effect=fx_rates.URLError("network down")
-    ):
-        data = fx_rates._fetch_with_retry("https://api.frankfurter.dev/v1/2025-01-15", max_attempts=3)
+    # Act
+    data = _fetch_with_retry(
+        "https://api.frankfurter.dev/v1/2025-01-15",
+        max_attempts=3,
+        open_url=opener,
+        sleep=delays.append,
+        jitter=Random(0).uniform,
+    )
 
+    # Assert
     assert data is None
-    assert mock_sleep.call_count == 2  # no sleep after the final attempt
+    assert len(delays) == 2
+    assert 1.0 <= delays[0] <= 1.5
+    assert 2.0 <= delays[1] <= 3.0
 
 
 def test_fetch_with_retry_does_not_retry_client_errors() -> None:
-    """HTTP 4xx errors (except 408/429) fail immediately without retry."""
-    from taxes import fx_rates
+    # Arrange
+    error = HTTPError("https://example.test", 404, "Not Found", Message(), None)
+    # A second response would succeed if the client error were incorrectly retried.
+    opener = FakeUrlOpener(error, b'{"rates": {"USD": 1.05}}')
+    delays: list[float] = []
 
-    error = fx_rates.urllib.error.HTTPError(
-        "https://api.frankfurter.dev/v1/x", 404, "Not Found", None, None
+    # Act
+    data = _fetch_with_retry(
+        "https://api.frankfurter.dev/v1/2025-01-15",
+        open_url=opener,
+        sleep=delays.append,
+        jitter=Random(0).uniform,
     )
 
-    with patch.object(fx_rates.time, "sleep") as mock_sleep, patch.object(
-        fx_rates.urllib.request, "urlopen", side_effect=error
-    ):
-        data = fx_rates._fetch_with_retry("https://api.frankfurter.dev/v1/2025-01-15")
-
+    # Assert
     assert data is None
-    mock_sleep.assert_not_called()
-
-
-def test_fetch_with_retry_retries_server_errors() -> None:
-    """HTTP 5xx responses are retried, then give up and return None."""
-    from taxes import fx_rates
-
-    error = fx_rates.urllib.error.HTTPError(
-        "https://api.frankfurter.dev/v1/x", 503, "Service Unavailable", None, None
-    )
-
-    with patch.object(fx_rates.time, "sleep") as mock_sleep, patch.object(
-        fx_rates.urllib.request, "urlopen", side_effect=error
-    ):
-        data = fx_rates._fetch_with_retry("https://api.frankfurter.dev/v1/2025-01-15", max_attempts=3)
-
-    assert data is None
-    assert mock_sleep.call_count == 2
+    assert delays == []

@@ -101,35 +101,41 @@ class SecurityTaxRules(dict[str, SecurityTaxRule]):
         for isin in isin_list:
             rule = self._resolve_rule(str(isin) if isin else "")
             if rule:
-                results.append({
-                    isin_col_name: isin,
-                    "source_country": rule.source_country,
-                    "tax_treatment": rule.tax_treatment,
-                    "max_creditable_rate": rule.max_creditable_rate,
-                    "instrument": rule.instrument,
-                    "fund_type": rule.fund_type,
-                })
+                results.append(
+                    {
+                        isin_col_name: isin,
+                        "source_country": rule.source_country,
+                        "tax_treatment": rule.tax_treatment,
+                        "max_creditable_rate": rule.max_creditable_rate,
+                        "instrument": rule.instrument,
+                        "fund_type": rule.fund_type,
+                    }
+                )
             else:
-                results.append({
-                    isin_col_name: isin,
-                    "source_country": None,
-                    "tax_treatment": None,
-                    "max_creditable_rate": 0.0,
-                    "instrument": "share",
-                    "fund_type": None,
-                })
+                results.append(
+                    {
+                        isin_col_name: isin,
+                        "source_country": None,
+                        "tax_treatment": None,
+                        "max_creditable_rate": 0.0,
+                        "instrument": "share",
+                        "fund_type": None,
+                    }
+                )
 
         if results:
             return pl.DataFrame(results)
         # Empty case: return DataFrame with correct schema but no rows
-        return pl.DataFrame(schema={
-            isin_col_name: pl.String,
-            "source_country": pl.String,
-            "tax_treatment": pl.String,
-            "max_creditable_rate": pl.Float64,
-            "instrument": pl.String,
-            "fund_type": pl.String,
-        })
+        return pl.DataFrame(
+            schema={
+                isin_col_name: pl.String,
+                "source_country": pl.String,
+                "tax_treatment": pl.String,
+                "max_creditable_rate": pl.Float64,
+                "instrument": pl.String,
+                "fund_type": pl.String,
+            }
+        )
 
 
 @dataclass(frozen=True)
@@ -361,15 +367,8 @@ def classify_embedded_withholding_taxes(
 
     # Step 2a: Compute creditable foreign tax (capped by gross income * max_creditable_rate)
     df_with_rules = df_with_rules.with_columns(
-        pl.when(
-            (pl.col("Steuerbehandlung") == "foreign") & (pl.col("_raw_tax") > 0)
-        )
-        .then(
-            pl.min_horizontal(
-                pl.col("_raw_tax"),
-                pl.col("_total_gross") * pl.col("max_creditable_rate")
-            )
-        )
+        pl.when((pl.col("Steuerbehandlung") == "foreign") & (pl.col("_raw_tax") > 0))
+        .then(pl.min_horizontal(pl.col("_raw_tax"), pl.col("_total_gross") * pl.col("max_creditable_rate")))
         .otherwise(0.0)
         .alias("Anrechenbare_Quellensteuer_EUR"),
     )
@@ -395,15 +394,17 @@ def classify_embedded_withholding_taxes(
 
     # Step 3: Split domestic tax into capital gains tax and solidarity surcharge
     df_with_rules = df_with_rules.with_columns(
-        (pl.col("_domestic_tax") / CAPITAL_GAINS_TAX_WITH_SOLIDARITY_MULTIPLIER).alias("Inlaendische_Kapitalertragsteuer_EUR"),
-        (pl.col("_domestic_tax") - (pl.col("_domestic_tax") / CAPITAL_GAINS_TAX_WITH_SOLIDARITY_MULTIPLIER)).alias("Solidaritaetszuschlag_EUR"),
+        (pl.col("_domestic_tax") / CAPITAL_GAINS_TAX_WITH_SOLIDARITY_MULTIPLIER).alias(
+            "Inlaendische_Kapitalertragsteuer_EUR"
+        ),
+        (pl.col("_domestic_tax") - (pl.col("_domestic_tax") / CAPITAL_GAINS_TAX_WITH_SOLIDARITY_MULTIPLIER)).alias(
+            "Solidaritaetszuschlag_EUR"
+        ),
     )
 
     # Step 4: Compute Swiss refundable (excess for CH)
     df_with_rules = df_with_rules.with_columns(
-        pl.when(
-            (pl.col("Steuerbehandlung") == "foreign") & (pl.col("source_country") == "CH")
-        )
+        pl.when((pl.col("Steuerbehandlung") == "foreign") & (pl.col("source_country") == "CH"))
         .then(pl.col("Nicht_anrechenbare_Quellensteuer_EUR"))
         .otherwise(0.0)
         .alias("_swiss_refundable"),
@@ -433,9 +434,16 @@ def classify_embedded_withholding_taxes(
 
     # Drop temporary columns
     temp_cols = [
-        "_raw_tax", "_gross_income", "_total_gross",
-        "source_country", "tax_treatment", "max_creditable_rate",
-        "instrument", "fund_type", "_domestic_tax", "_swiss_refundable",
+        "_raw_tax",
+        "_gross_income",
+        "_total_gross",
+        "source_country",
+        "tax_treatment",
+        "max_creditable_rate",
+        "instrument",
+        "fund_type",
+        "_domestic_tax",
+        "_swiss_refundable",
     ]
     classified = df_with_rules.drop([c for c in temp_cols if c in df_with_rules.columns])
 
@@ -523,8 +531,12 @@ def classify_standalone_withholding_taxes(
 
     # Split domestic tax into capital gains tax and solidarity surcharge
     df_with_rules = df_with_rules.with_columns(
-        (pl.col("_domestic_tax") / CAPITAL_GAINS_TAX_WITH_SOLIDARITY_MULTIPLIER).alias("Inlaendische_Kapitalertragsteuer_EUR"),
-        (pl.col("_domestic_tax") - (pl.col("_domestic_tax") / CAPITAL_GAINS_TAX_WITH_SOLIDARITY_MULTIPLIER)).alias("Solidaritaetszuschlag_EUR"),
+        (pl.col("_domestic_tax") / CAPITAL_GAINS_TAX_WITH_SOLIDARITY_MULTIPLIER).alias(
+            "Inlaendische_Kapitalertragsteuer_EUR"
+        ),
+        (pl.col("_domestic_tax") - (pl.col("_domestic_tax") / CAPITAL_GAINS_TAX_WITH_SOLIDARITY_MULTIPLIER)).alias(
+            "Solidaritaetszuschlag_EUR"
+        ),
     )
 
     # Creditable foreign tax is always 0 for standalone bookings
@@ -555,8 +567,12 @@ def classify_standalone_withholding_taxes(
     # Drop temporary columns
     temp_cols = [
         "_raw_tax",
-        "source_country", "tax_treatment", "max_creditable_rate",
-        "instrument", "fund_type", "_domestic_tax",
+        "source_country",
+        "tax_treatment",
+        "max_creditable_rate",
+        "instrument",
+        "fund_type",
+        "_domestic_tax",
     ]
     classified = df_with_rules.drop([c for c in temp_cols if c in df_with_rules.columns])
 

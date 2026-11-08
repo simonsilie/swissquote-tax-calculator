@@ -5,9 +5,10 @@ import random
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
-from typing import Optional, Protocol, Sequence
+from typing import BinaryIO, ContextManager, Optional, Protocol, Sequence
 from urllib.error import URLError
 
 from loguru import logger
@@ -53,22 +54,25 @@ HTTP_SERVER_ERRORS_START = 500
 
 def _is_retryable_http_error(error: urllib.error.HTTPError) -> bool:
     """Only server-side and rate-limit responses are worth retrying."""
-    return (
-        error.code >= HTTP_SERVER_ERRORS_START
-        or error.code in (HTTP_REQUEST_TIMEOUT, HTTP_TOO_MANY_REQUESTS)
-    )
+    return error.code >= HTTP_SERVER_ERRORS_START or error.code in (HTTP_REQUEST_TIMEOUT, HTTP_TOO_MANY_REQUESTS)
 
 
 def _fetch_with_retry(
     url: str,
     max_attempts: int = API_MAX_ATTEMPTS,
     initial_backoff: float = API_INITIAL_BACKOFF_SECONDS,
+    *,
+    open_url: Callable[..., ContextManager[BinaryIO]] = urllib.request.urlopen,
+    sleep: Callable[[float], None] = time.sleep,
+    jitter: Callable[[float, float], float] = random.uniform,
 ) -> Optional[dict[object, object]]:
     """GET a JSON document with exponential backoff and jitter.
 
     Retries transient failures (connection errors, timeouts, HTTP 408/429/5xx).
-    Client errors (e.g. 404) and permanently malformed responses return None
-    immediately. Returns None when all attempts are exhausted.
+    Malformed JSON is retried as well. Other client errors (e.g. 404) return
+    None immediately. Returns None when all attempts are exhausted.
+
+    The HTTP opener, sleep, and jitter sources are injectable I/O boundaries.
     """
     request = urllib.request.Request(url)
     request.add_header("User-Agent", "Mozilla/5.0 (compatible; TaxScript/1.0)")
@@ -78,7 +82,7 @@ def _fetch_with_retry(
     for attempt in range(1, max_attempts + 1):
         last_error = None
         try:
-            with urllib.request.urlopen(request, timeout=API_REQUEST_TIMEOUT_SECONDS) as response:
+            with open_url(request, timeout=API_REQUEST_TIMEOUT_SECONDS) as response:
                 return json.load(response)
         except urllib.error.HTTPError as e:
             if not _is_retryable_http_error(e):
@@ -93,16 +97,52 @@ def _fetch_with_retry(
             last_error = e
 
         if attempt < max_attempts:
-            sleep_seconds = backoff + random.uniform(0, backoff / 2)
+            sleep_seconds = backoff + jitter(0, backoff / 2)
             logger.warning(
                 f"Frankfurter API attempt {attempt}/{max_attempts} failed ({last_error}); "
                 f"retrying in {sleep_seconds:.1f}s"
             )
-            time.sleep(sleep_seconds)
+            sleep(sleep_seconds)
             backoff *= API_BACKOFF_MULTIPLIER
 
     logger.warning(f"Frankfurter API failed after {max_attempts} attempts: {last_error}")
     return None
+
+
+class FXRateCache(Protocol):
+    """Persistent cache boundary; tests can supply an in-memory store."""
+
+    def load(self) -> dict[str, dict[str, float]]: ...
+
+    def save(self, rates: dict[str, dict[str, float]]) -> None: ...
+
+
+class JsonFXRateCache:
+    """Read and atomically replace the on-disk daily rate cache."""
+
+    def __init__(self, cache_file: Path) -> None:
+        self.cache_file = cache_file
+
+    def load(self) -> dict[str, dict[str, float]]:
+        if self.cache_file.exists():
+            try:
+                with open(self.cache_file, "r", encoding="utf-8") as file:
+                    return json.load(file)
+            except json.JSONDecodeError:
+                logger.warning(f"Corrupted FX rate cache file '{self.cache_file}', starting fresh")
+            except OSError as error:
+                logger.warning(f"Cannot read FX rate cache file '{self.cache_file}': {error}")
+        return {}
+
+    def save(self, rates: dict[str, dict[str, float]]) -> None:
+        try:
+            self.cache_file.parent.mkdir(parents=True, exist_ok=True)
+            tmp_file = self.cache_file.with_suffix(".tmp")
+            with open(tmp_file, "w", encoding="utf-8") as file:
+                json.dump(rates, file, ensure_ascii=False, indent=2)
+            tmp_file.replace(self.cache_file)
+        except OSError as error:
+            logger.warning(f"Failed to save FX rate cache: {error}")
 
 
 class DailyFXRateFetcher:
@@ -112,47 +152,39 @@ class DailyFXRateFetcher:
     rates. Fallback approximations are kept in memory only and are never written to
     the persistent cache, so a later run (or a recovered connection) can still fetch
     the real daily rate from the API.
+
+    Callers can inject a cache and JSON transport for isolated tests. An
+    explicit ``offline`` value overrides the SWISSQUOTE_TAX_OFFLINE setting.
     """
 
-    def __init__(self, cache_file: Optional[Path] = None) -> None:
+    def __init__(
+        self,
+        cache_file: Optional[Path] = None,
+        *,
+        cache: FXRateCache | None = None,
+        fetch_json: Callable[[str], dict[object, object] | None] = _fetch_with_retry,
+        offline: bool | None = None,
+    ) -> None:
         self.cache_file = cache_file or CACHE_FILE
-        self._cache: dict[str, dict[str, float]] = {}
+        self._store = cache if cache is not None else JsonFXRateCache(self.cache_file)
+        self._fetch_json = fetch_json
+        self._cache = self._store.load()
         self._fallback_cache: dict[str, dict[str, float]] = {}
         self._offline = False
-        raw = os.environ.get("SWISSQUOTE_TAX_OFFLINE", "")
-        if raw.lower() in ("1", "true", "yes"):
-            self._offline = True
-        elif raw and raw.lower() not in ("0", "false", "no"):
-            logger.warning(f"Invalid SWISSQUOTE_TAX_OFFLINE value '{raw}', treating as disabled")
-        self._load_cache()
-
-    def _load_cache(self) -> None:
-        if self.cache_file.exists():
-            try:
-                with open(self.cache_file, "r", encoding="utf-8") as f:
-                    self._cache = json.load(f)
-            except json.JSONDecodeError:
-                logger.warning(f"Corrupted FX rate cache file '{self.cache_file}', starting fresh")
-                self._cache = {}
-            except OSError as e:
-                logger.warning(f"Cannot read FX rate cache file '{self.cache_file}': {e}")
-                self._cache = {}
-
-    def _save_cache(self) -> None:
-        try:
-            self.cache_file.parent.mkdir(parents=True, exist_ok=True)
-            tmp_file = self.cache_file.with_suffix(".tmp")
-            with open(tmp_file, "w", encoding="utf-8") as f:
-                json.dump(self._cache, f, ensure_ascii=False, indent=2)
-            tmp_file.replace(self.cache_file)
-        except OSError as e:
-            logger.warning(f"Failed to save FX rate cache: {e}")
+        if offline is not None:
+            self._offline = offline
+        else:
+            raw = os.environ.get("SWISSQUOTE_TAX_OFFLINE", "")
+            if raw.lower() in ("1", "true", "yes"):
+                self._offline = True
+            elif raw and raw.lower() not in ("0", "false", "no"):
+                logger.warning(f"Invalid SWISSQUOTE_TAX_OFFLINE value '{raw}', treating as disabled")
 
     def _fetch_daily_from_api(self, target_date: date, currencies: Sequence[str]) -> Optional[dict[str, float]]:
         date_str = target_date.isoformat()
         currency_param = ",".join(currencies)
         url = f"https://api.frankfurter.dev/v1/{date_str}?from=EUR&to={currency_param}"
-        data = _fetch_with_retry(url)
+        data = self._fetch_json(url)
         if data is None:
             return None
 
@@ -207,7 +239,7 @@ class DailyFXRateFetcher:
         daily_rates = self._fetch_daily_from_api(target_date, DEFAULT_CURRENCIES)
         if daily_rates:
             self._cache[date_str] = daily_rates
-            self._save_cache()
+            self._store.save(self._cache)
             if currency in daily_rates:
                 return daily_rates[currency]
 

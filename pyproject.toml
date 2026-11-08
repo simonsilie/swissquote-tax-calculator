@@ -47,3 +47,8 @@ project-includes = [
     "**/*.ipynb",
 ]
 search-path = ["src", "."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: uses real filesystem, process, or other external runtime boundaries"]
+addopts = "--strict-markers"

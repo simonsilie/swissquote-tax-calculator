@@ -3,6 +3,7 @@ from pathlib import Path
 import polars as pl
 from taxes.elster_export import export_elster_mapping
 from taxes.withholding_tax import WithholdingTaxSummary
+from tests.fakes import write_fake_pdf
 
 
 def test_zeile_19_includes_stock_gains(tmp_path: Path) -> None:
@@ -21,6 +22,7 @@ def test_zeile_19_includes_stock_gains(tmp_path: Path) -> None:
         stock_losses=-30.0,
         fund_dividends=fund_dividends,
         round_amount=False,
+        pdf_renderer=write_fake_pdf,
     )
 
     content = md_path.read_text(encoding="utf-8")
@@ -60,6 +62,7 @@ def test_export_elster_mapping_uses_utf8_characters(tmp_path: Path) -> None:
         stock_losses=-30.0,
         fund_dividends=fund_df,
         round_amount=True,
+        pdf_renderer=write_fake_pdf,
     )
 
     content = md_path.read_text(encoding="utf-8")

@@ -78,9 +78,7 @@ def calculate_realized_stock_results(
 
         if transaction_type in purchase_types:
             cost_eur = _to_decimal(transaction[eur_col], AMOUNT_PRECISION).copy_negate()
-            lots_by_isin.setdefault(isin, deque()).append(
-                {"quantity": quantity, "cost_eur": cost_eur}
-            )
+            lots_by_isin.setdefault(isin, deque()).append({"quantity": quantity, "cost_eur": cost_eur})
             continue
 
         remaining_quantity = quantity
@@ -92,9 +90,7 @@ def calculate_realized_stock_results(
             # cost_eur is total cost for the lot. Allocate rounded cents once and
             # subtract exactly that allocation so the lot's total cost is conserved
             # and a later sale cannot reuse it.
-            matched_cost = _round_decimal(
-                lot["cost_eur"] * (matched_quantity / lot["quantity"]), AMOUNT_PRECISION
-            )
+            matched_cost = _round_decimal(lot["cost_eur"] * (matched_quantity / lot["quantity"]), AMOUNT_PRECISION)
             acquisition_cost_eur += matched_cost
             lot["cost_eur"] = lot["cost_eur"] - matched_cost
             lot["quantity"] = _round_decimal(lot["quantity"] - matched_quantity)

@@ -9,6 +9,7 @@ without Streamlit.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -230,7 +231,12 @@ def build_details_view(result: Result) -> DetailsView:
     )
 
 
-def export_summary(result: Result, output_dir: Path) -> Path:
+def export_summary(
+    result: Result,
+    output_dir: Path,
+    *,
+    pdf_renderer: Callable[[str, Path], None] | None = None,
+) -> Path:
     """Generate the ELSTER mapping files for the download buttons."""
     return export_elster_mapping(
         output_dir=output_dir,
@@ -244,4 +250,5 @@ def export_summary(result: Result, output_dir: Path) -> Path:
         stock_losses=result.stock_sales.losses,
         fund_dividends=result.dividends.funds,
         round_amount=result.config.round_amount,
+        pdf_renderer=pdf_renderer,
     )
